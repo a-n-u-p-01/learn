@@ -50,7 +50,7 @@ a{color:inherit;text-decoration:none}
 ::selection{background:var(--accent-dim);color:#fff}
 
 /* layout */
-.wrap{max-width:1080px;margin:0 auto;padding:0 clamp(18px,5vw,40px)}
+.wrap{max-width:1080px;margin:0 auto;padding:0 clamp(20px,5vw,40px)}
 section{scroll-margin-top:84px}
 
 /* nav */
@@ -79,7 +79,7 @@ section{scroll-margin-top:84px}
 .tab.on{color:#fff;background:var(--accent-dim);border-color:rgba(255,93,82,.3)}
 
 /* hero */
-.hero{padding:clamp(56px,11vw,120px) 0 clamp(36px,6vw,60px);position:relative}
+.hero{padding-top:clamp(56px,11vw,120px);padding-bottom:clamp(36px,6vw,60px);position:relative}
 .hero .kicker{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--accent-2);
   background:var(--accent-dim);border:1px solid rgba(255,93,82,.25);padding:6px 13px;border-radius:999px;font-weight:600}
 .hero h1{font-size:clamp(38px,7vw,72px);line-height:1.04;font-weight:800;letter-spacing:-.02em;margin:22px 0 0}
@@ -111,7 +111,7 @@ section{scroll-margin-top:84px}
 .shead h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.02em;margin-top:8px}
 .shead p{color:var(--muted);font-size:15px;margin-top:8px;max-width:560px}
 .divider{height:1px;background:var(--line);margin:0}
-.block{padding:clamp(54px,8vw,96px) 0}
+.block{padding-top:clamp(54px,8vw,96px);padding-bottom:clamp(54px,8vw,96px)}
 
 /* chips / segmented */
 .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -336,6 +336,60 @@ section{scroll-margin-top:84px}
 .greet .gp .pbar{margin-top:0}
 .greet .gp .lab{font-size:12px;color:var(--faint);margin-bottom:6px;display:flex;justify-content:space-between}
 
+/* ---- today panel ---- */
+.today{background:linear-gradient(180deg,var(--bg-2),var(--bg-1));border:1px solid var(--line-2);border-radius:var(--r-lg);padding:clamp(20px,4vw,28px);margin-top:22px;box-shadow:var(--shadow)}
+.today-h{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}
+.today-h h3{font-size:clamp(18px,3vw,22px);font-weight:800;letter-spacing:-.01em;margin-top:3px}
+.tring{flex-shrink:0;width:54px;height:54px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:15px;color:var(--fg);background:var(--bg-2);border:2px solid var(--line-2)}
+.tring.full{color:#fff;border-color:var(--good);background:rgba(74,222,128,.15)}
+.tasklist{display:grid;gap:8px}
+.task{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:13px;background:var(--bg-1);border:1px solid var(--line);border-radius:12px;padding:11px 14px;transition:.14s}
+.task.done{background:rgba(74,222,128,.07);border-color:rgba(74,222,128,.25)}
+.tck{width:26px;height:26px;border-radius:8px;border:1.5px solid var(--line-2);background:var(--bg-2);font-weight:800;font-size:14px;display:grid;place-items:center;cursor:pointer;flex-shrink:0;color:#06281a}
+.tck:disabled{cursor:default}
+.task.done .tck{background:var(--good);border-color:var(--good)}
+.tlb{font-size:14.5px;font-weight:500;cursor:pointer}
+.task.done .tlb{color:var(--muted);text-decoration:line-through}
+.tgo{background:none;border:none;color:var(--accent-2);font-size:18px;cursor:pointer;padding:2px 7px;border-radius:8px}
+.tgo:hover{background:var(--accent-dim)}
+.pace{margin-top:16px;font-size:13.5px;color:var(--muted);line-height:1.6}
+.pace .pace-ok{color:var(--good);font-weight:600}
+.pace .ontrack{color:var(--good)} .pace .behind{color:var(--accent-2)}
+.examrow{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.examrow label{font-size:12px;color:var(--faint);font-weight:600}
+.dateinp{background:var(--bg);border:1px solid var(--line-2);border-radius:10px;padding:7px 11px;color:var(--fg);font-family:inherit;font-size:13px;color-scheme:dark}
+.dateinp:focus{outline:none;border-color:var(--accent)}
+
+/* ---- mobile polish pass ---- */
+@media(max-width:600px){
+  .hero{padding-top:26px;padding-bottom:16px}
+  .hero h1{font-size:clamp(30px,8.5vw,42px);line-height:1.08}
+  .hero p{font-size:14.5px;margin-top:13px}
+  .hero .kicker{font-size:12px;padding:5px 11px}
+  .hero .cta{margin-top:20px}
+  .hero .stat-row{margin-top:22px}
+  .block{padding-top:clamp(34px,8vw,64px);padding-bottom:clamp(34px,8vw,64px)}
+  .shead p{font-size:13.5px}
+  .stat-row .stat{min-width:calc(50% - 7px)}
+  .qcard,.today,.mastery,.reading-card,.login-card{padding:18px 16px}
+  .gcard{padding:16px 16px}
+  .today-h h3{font-size:17px}
+  .tring{width:46px;height:46px;font-size:13px}
+  .opt{font-size:15px}
+  .kj{padding:14px 14px}
+  .kj .big{font-size:40px}
+  .shead h2{font-size:clamp(23px,7vw,30px)}
+  .gcard .pt{font-size:18px}
+  .vrow .jp{font-size:18px}
+  .n4card{gap:14px}
+}
+@media(max-width:380px){
+  .grade{padding:10px 2px} .grade b{font-size:11.5px} .grade span{font-size:9px}
+  .opt .k{width:22px;height:22px;font-size:12px}
+  .kana-grid{grid-template-columns:repeat(auto-fill,minmax(60px,1fr))}
+  .tlb{font-size:13.5px}
+}
+
 /* ---- accessibility & safe areas ---- */
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
 .nav{padding-top:env(safe-area-inset-top)}
@@ -482,7 +536,14 @@ section{scroll-margin-top:84px}
 /* ---- practice responsive polish ---- */
 .study-wrap{max-width:600px}
 .flashcard{height:clamp(300px,40vh,400px)}
-@media(max-width:560px){ .seg{display:flex;width:100%;max-width:440px;margin:0 auto} .seg button{flex:1;text-align:center;padding:9px 8px} }
+@media(max-width:560px){
+  /* tab + chip rows become single-line, swipeable — no awkward orphan wrap rows */
+  .seg,.chips{flex-wrap:nowrap!important;overflow-x:auto;overflow-y:hidden;justify-content:flex-start!important;scrollbar-width:none;-webkit-overflow-scrolling:touch;max-width:100%}
+  .seg::-webkit-scrollbar,.chips::-webkit-scrollbar{display:none}
+  .seg{width:-moz-fit-content;width:fit-content;max-width:100%;margin-left:auto;margin-right:auto}
+  .seg button,.chip{flex:0 0 auto;white-space:nowrap}
+  .seg button{padding:9px 14px;font-size:13px}
+}
 @media(max-width:760px){ .main{padding-bottom:92px} }
 </style>
 </head>
@@ -1653,49 +1714,172 @@ var VOCAB = [
   {jp:'たばこ',kana:'たばこ',romaji:'tabako',en:'cigarette, tobacco',cat:'Common'}
 ];
 
-// JLPT N5 core grammar points
+// JLPT N5 core grammar — each point with 2-3 example sentences
 var GRAMMAR = [
-  {point:'は (wa)',meaning:'topic marker',explain:'Marks the topic of the sentence — "as for ___". Written は but pronounced "wa".',ex:[{jp:'私は学生です。',romaji:'Watashi wa gakusei desu.',en:'I am a student.'}]},
-  {point:'です / だ',meaning:'to be (copula)',explain:'Links a noun/adjective to the subject. です is polite; だ is plain.',ex:[{jp:'これは本です。',romaji:'Kore wa hon desu.',en:'This is a book.'}]},
-  {point:'が (ga)',meaning:'subject marker',explain:'Marks the grammatical subject, often for new information or with existence verbs.',ex:[{jp:'猫がいます。',romaji:'Neko ga imasu.',en:'There is a cat.'}]},
-  {point:'を (o)',meaning:'direct object marker',explain:'Marks the object that receives the action of a verb.',ex:[{jp:'パンを食べます。',romaji:'Pan o tabemasu.',en:'I eat bread.'}]},
-  {point:'に (ni)',meaning:'time / destination / location',explain:'Points to a time, a destination, or where something exists.',ex:[{jp:'七時に起きます。',romaji:'Shichi-ji ni okimasu.',en:'I get up at seven.'}]},
-  {point:'で (de)',meaning:'place of action / means',explain:'Marks where an action happens, or the means by which it is done.',ex:[{jp:'学校で勉強します。',romaji:'Gakkō de benkyō shimasu.',en:'I study at school.'}]},
-  {point:'へ (e)',meaning:'direction',explain:'Marks the direction of movement. Written へ but pronounced "e".',ex:[{jp:'日本へ行きます。',romaji:'Nihon e ikimasu.',en:'I am going to Japan.'}]},
-  {point:'と (to)',meaning:'and / with',explain:'Joins nouns ("and") or marks the person you do something with ("with").',ex:[{jp:'友だちと話します。',romaji:'Tomodachi to hanashimasu.',en:'I talk with a friend.'}]},
-  {point:'も (mo)',meaning:'also, too',explain:'Replaces は/が/を to mean "also" or "too".',ex:[{jp:'私も学生です。',romaji:'Watashi mo gakusei desu.',en:'I am a student too.'}]},
-  {point:'の (no)',meaning:'possessive / linking',explain:'Connects two nouns, showing possession or relationship.',ex:[{jp:'私の本です。',romaji:'Watashi no hon desu.',en:'It is my book.'}]},
-  {point:'か (ka)',meaning:'question marker',explain:'Added to the end of a sentence to make it a question.',ex:[{jp:'学生ですか。',romaji:'Gakusei desu ka.',en:'Are you a student?'}]},
-  {point:'～ます / ～ません',meaning:'polite verb / negative',explain:'～ます is the polite non-past; ～ません makes it negative.',ex:[{jp:'肉を食べません。',romaji:'Niku o tabemasen.',en:'I do not eat meat.'}]},
-  {point:'～ました / ～ませんでした',meaning:'polite past / past negative',explain:'Past tense of polite verbs, affirmative and negative.',ex:[{jp:'昨日、映画を見ました。',romaji:'Kinō, eiga o mimashita.',en:'I watched a movie yesterday.'}]},
-  {point:'～ませんか',meaning:'invitation (won\'t you?)',explain:'A polite way to invite someone to do something together.',ex:[{jp:'お茶を飲みませんか。',romaji:'Ocha o nomimasen ka.',en:'Would you like to drink tea?'}]},
-  {point:'～ましょう',meaning:'let\'s ～',explain:'Suggests doing something together.',ex:[{jp:'一緒に行きましょう。',romaji:'Issho ni ikimashō.',en:'Let\'s go together.'}]},
-  {point:'い-adjectives',meaning:'adjective type 1',explain:'End in い. Negative: drop い, add くない.',ex:[{jp:'この本は高くないです。',romaji:'Kono hon wa takakunai desu.',en:'This book is not expensive.'}]},
-  {point:'な-adjectives',meaning:'adjective type 2',explain:'Take な before a noun; use です to end a sentence.',ex:[{jp:'元気な人ですね。',romaji:'Genki na hito desu ne.',en:'You are an energetic person.'}]},
-  {point:'これ / それ / あれ',meaning:'this / that / that over there',explain:'Stand-alone pronouns based on distance from speaker and listener.',ex:[{jp:'これは何ですか。',romaji:'Kore wa nan desu ka.',en:'What is this?'}]},
-  {point:'この / その / あの + noun',meaning:'this/that ～',explain:'Used directly before a noun (unlike これ/それ/あれ).',ex:[{jp:'あの人は先生です。',romaji:'Ano hito wa sensei desu.',en:'That person is a teacher.'}]},
-  {point:'～たい',meaning:'want to ～',explain:'Attach to a verb stem to express your own desire to do something.',ex:[{jp:'寿司が食べたいです。',romaji:'Sushi ga tabetai desu.',en:'I want to eat sushi.'}]},
-  {point:'～てください',meaning:'please do ～',explain:'Made from the て-form of a verb to make a polite request.',ex:[{jp:'ここを見てください。',romaji:'Koko o mite kudasai.',en:'Please look here.'}]},
-  {point:'～ています',meaning:'ongoing action',explain:'て-form + います shows an action in progress or a state.',ex:[{jp:'今、ご飯を食べています。',romaji:'Ima, gohan o tabete imasu.',en:'I am eating now.'}]},
-  {point:'ある / いる',meaning:'there is / exists',explain:'ある for non-living things; いる for living things.',ex:[{jp:'部屋に犬がいます。',romaji:'Heya ni inu ga imasu.',en:'There is a dog in the room.'}]},
-  {point:'から / まで',meaning:'from / until',explain:'から marks a start point; まで marks an end point (time or place).',ex:[{jp:'九時から五時まで働きます。',romaji:'Ku-ji kara go-ji made hatarakimasu.',en:'I work from nine to five.'}]},
-  {point:'～が、～',meaning:'but, however',explain:'Connects two clauses with a contrast.',ex:[{jp:'高いですが、おいしいです。',romaji:'Takai desu ga, oishii desu.',en:'It is expensive, but delicious.'}]},
-  {point:'～じゃありません',meaning:'is not (noun)',explain:'The negative of です for nouns and な-adjectives. じゃない is the casual form.',ex:[{jp:'これは私の傘じゃありません。',romaji:'Kore wa watashi no kasa ja arimasen.',en:'This is not my umbrella.'}]},
-  {point:'～でした',meaning:'was (noun, past)',explain:'Past tense of です. Negative past: ～じゃありませんでした.',ex:[{jp:'昨日は休みでした。',romaji:'Kinō wa yasumi deshita.',en:'Yesterday was a day off.'}]},
-  {point:'い-adjective past (～かった)',meaning:'was ～',explain:'Drop い and add かった for the past of い-adjectives (いい→よかった).',ex:[{jp:'旅行は楽しかったです。',romaji:'Ryokō wa tanoshikatta desu.',en:'The trip was fun.'}]},
-  {point:'～て (te-form)',meaning:'and (joining actions)',explain:'The て-form links verbs/clauses in sequence — "do this and then that".',ex:[{jp:'朝起きて、顔を洗います。',romaji:'Asa okite, kao o araimasu.',en:'I get up in the morning and wash my face.'}]},
-  {point:'～から',meaning:'because, so',explain:'Placed after a reason clause to mean "because". (Different from から = "from".)',ex:[{jp:'忙しいから、行きません。',romaji:'Isogashii kara, ikimasen.',en:'I won\'t go because I\'m busy.'}]},
-  {point:'～ないでください',meaning:'please don\'t ～',explain:'From the ない-form of a verb — a polite request not to do something.',ex:[{jp:'ここで写真を撮らないでください。',romaji:'Koko de shashin o toranaide kudasai.',en:'Please don\'t take photos here.'}]},
-  {point:'～ましょうか',meaning:'shall I / shall we?',explain:'Offers to do something or proposes doing it together.',ex:[{jp:'窓を開けましょうか。',romaji:'Mado o akemashō ka.',en:'Shall I open the window?'}]},
-  {point:'～がほしい',meaning:'want (something)',explain:'Expresses desire for a thing (a noun). Marked with が.',ex:[{jp:'新しいかばんがほしいです。',romaji:'Atarashii kaban ga hoshii desu.',en:'I want a new bag.'}]},
-  {point:'～が上手 / 下手',meaning:'good / bad at',explain:'Skill at something is marked with が + 上手 (good) or 下手 (bad).',ex:[{jp:'妹は歌が上手です。',romaji:'Imōto wa uta ga jōzu desu.',en:'My little sister is good at singing.'}]},
-  {point:'もう / まだ',meaning:'already / not yet',explain:'もう = already (with past); まだ = still / not yet.',ex:[{jp:'もう昼ご飯を食べました。',romaji:'Mō hirugohan o tabemashita.',en:'I already ate lunch.'},{jp:'まだです。',romaji:'Mada desu.',en:'Not yet.'}]},
-  {point:'～や～',meaning:'and (examples)',explain:'Lists nouns as examples (non-exhaustive), unlike と which is a full list.',ex:[{jp:'机の上に本やペンがあります。',romaji:'Tsukue no ue ni hon ya pen ga arimasu.',en:'There are books, pens, and so on, on the desk.'}]},
-  {point:'～ね / ～よ',meaning:'sentence-end particles',explain:'ね seeks agreement ("right?"); よ adds emphasis / new info ("you know").',ex:[{jp:'いい天気ですね。',romaji:'Ii tenki desu ne.',en:'Nice weather, isn\'t it?'},{jp:'これは便利ですよ。',romaji:'Kore wa benri desu yo.',en:'This is convenient, you know.'}]},
-  {point:'～くなる / ～になる',meaning:'become ～',explain:'い-adj: drop い + くなる. な-adj/noun: + になる.',ex:[{jp:'寒くなりました。',romaji:'Samuku narimashita.',en:'It has gotten cold.'},{jp:'日本語が上手になりました。',romaji:'Nihongo ga jōzu ni narimashita.',en:'My Japanese has gotten better.'}]},
-  {point:'一番',meaning:'the most (superlative)',explain:'一番 + adjective marks the highest degree among a group.',ex:[{jp:'富士山は日本で一番高い山です。',romaji:'Fujisan wa nihon de ichiban takai yama desu.',en:'Mt. Fuji is the tallest mountain in Japan.'}]},
-  {point:'～より',meaning:'than (comparison)',explain:'A は B より ～ = "A is more ~ than B".',ex:[{jp:'電車はバスより速いです。',romaji:'Densha wa basu yori hayai desu.',en:'Trains are faster than buses.'}]},
-  {point:'～前に / ～後で',meaning:'before / after',explain:'Verb(dictionary)+前に = before doing; Verb(past た)+後で = after doing.',ex:[{jp:'寝る前に歯を磨きます。',romaji:'Neru mae ni ha o migakimasu.',en:'I brush my teeth before sleeping.'},{jp:'食べた後で、散歩します。',romaji:'Tabeta ato de, sanpo shimasu.',en:'After eating, I take a walk.'}]}
+  {point:'は (wa)',meaning:'topic marker',explain:'Marks the topic — "as for ___". Written は, pronounced "wa".',ex:[
+    {jp:'私は学生です。',romaji:'Watashi wa gakusei desu.',en:'I am a student.'},
+    {jp:'田中さんは先生です。',romaji:'Tanaka-san wa sensei desu.',en:'Mr. Tanaka is a teacher.'},
+    {jp:'これは本です。',romaji:'Kore wa hon desu.',en:'This is a book.'}]},
+  {point:'です / だ',meaning:'to be (copula)',explain:'Links a noun/adjective to the subject. です is polite; だ is plain.',ex:[
+    {jp:'これはペンです。',romaji:'Kore wa pen desu.',en:'This is a pen.'},
+    {jp:'私は元気です。',romaji:'Watashi wa genki desu.',en:'I am fine.'},
+    {jp:'学生だ。',romaji:'Gakusei da.',en:'(I) am a student. (plain)'}]},
+  {point:'が (ga)',meaning:'subject marker',explain:'Marks the grammatical subject — often new info or with existence verbs.',ex:[
+    {jp:'猫がいます。',romaji:'Neko ga imasu.',en:'There is a cat.'},
+    {jp:'雨が降っています。',romaji:'Ame ga futte imasu.',en:'It is raining.'},
+    {jp:'だれが来ますか。',romaji:'Dare ga kimasu ka.',en:'Who is coming?'}]},
+  {point:'を (o)',meaning:'direct object marker',explain:'Marks the object that receives the action of a verb.',ex:[
+    {jp:'パンを食べます。',romaji:'Pan o tabemasu.',en:'I eat bread.'},
+    {jp:'水を飲みます。',romaji:'Mizu o nomimasu.',en:'I drink water.'},
+    {jp:'本を読みます。',romaji:'Hon o yomimasu.',en:'I read a book.'}]},
+  {point:'に (ni)',meaning:'time / destination / location',explain:'Points to a time, a destination, or where something exists.',ex:[
+    {jp:'七時に起きます。',romaji:'Shichi-ji ni okimasu.',en:'I get up at seven.'},
+    {jp:'学校に行きます。',romaji:'Gakkō ni ikimasu.',en:'I go to school.'},
+    {jp:'部屋に犬がいます。',romaji:'Heya ni inu ga imasu.',en:'There is a dog in the room.'}]},
+  {point:'で (de)',meaning:'place of action / means',explain:'Where an action happens, or the means by which it is done.',ex:[
+    {jp:'学校で勉強します。',romaji:'Gakkō de benkyō shimasu.',en:'I study at school.'},
+    {jp:'バスで行きます。',romaji:'Basu de ikimasu.',en:'I go by bus.'},
+    {jp:'日本語で話します。',romaji:'Nihongo de hanashimasu.',en:'I speak in Japanese.'}]},
+  {point:'へ (e)',meaning:'direction',explain:'Marks direction of movement. Written へ, pronounced "e".',ex:[
+    {jp:'日本へ行きます。',romaji:'Nihon e ikimasu.',en:'I am going to Japan.'},
+    {jp:'家へ帰ります。',romaji:'Uchi e kaerimasu.',en:'I return home.'},
+    {jp:'どこへ行きますか。',romaji:'Doko e ikimasu ka.',en:'Where are you going?'}]},
+  {point:'と (to)',meaning:'and / with',explain:'Joins nouns ("and") or marks who you do something with ("with").',ex:[
+    {jp:'パンとたまごを買います。',romaji:'Pan to tamago o kaimasu.',en:'I buy bread and eggs.'},
+    {jp:'友だちと話します。',romaji:'Tomodachi to hanashimasu.',en:'I talk with a friend.'},
+    {jp:'母と買い物に行きます。',romaji:'Haha to kaimono ni ikimasu.',en:'I go shopping with my mother.'}]},
+  {point:'も (mo)',meaning:'also, too',explain:'Replaces は/が/を to mean "also" or "too".',ex:[
+    {jp:'私も学生です。',romaji:'Watashi mo gakusei desu.',en:'I am a student too.'},
+    {jp:'これもください。',romaji:'Kore mo kudasai.',en:'This one too, please.'},
+    {jp:'田中さんも来ます。',romaji:'Tanaka-san mo kimasu.',en:'Mr. Tanaka is coming too.'}]},
+  {point:'の (no)',meaning:'possessive / linking',explain:'Connects two nouns, showing possession or relationship.',ex:[
+    {jp:'私の本です。',romaji:'Watashi no hon desu.',en:'It is my book.'},
+    {jp:'日本語の先生。',romaji:'Nihongo no sensei.',en:'A Japanese teacher.'},
+    {jp:'これはだれの傘ですか。',romaji:'Kore wa dare no kasa desu ka.',en:'Whose umbrella is this?'}]},
+  {point:'か (ka)',meaning:'question marker',explain:'Added to the end of a sentence to make it a question.',ex:[
+    {jp:'学生ですか。',romaji:'Gakusei desu ka.',en:'Are you a student?'},
+    {jp:'行きますか。',romaji:'Ikimasu ka.',en:'Are you going?'},
+    {jp:'これは何ですか。',romaji:'Kore wa nan desu ka.',en:'What is this?'}]},
+  {point:'～ます / ～ません',meaning:'polite verb / negative',explain:'～ます is the polite non-past; ～ません makes it negative.',ex:[
+    {jp:'肉を食べます。',romaji:'Niku o tabemasu.',en:'I eat meat.'},
+    {jp:'お酒を飲みません。',romaji:'Osake o nomimasen.',en:'I do not drink alcohol.'},
+    {jp:'毎日勉強します。',romaji:'Mainichi benkyō shimasu.',en:'I study every day.'}]},
+  {point:'～ました / ～ませんでした',meaning:'polite past / past negative',explain:'Past tense of polite verbs, affirmative and negative.',ex:[
+    {jp:'映画を見ました。',romaji:'Eiga o mimashita.',en:'I watched a movie.'},
+    {jp:'昨日は行きませんでした。',romaji:'Kinō wa ikimasen deshita.',en:'I did not go yesterday.'},
+    {jp:'朝ご飯を食べましたか。',romaji:'Asagohan o tabemashita ka.',en:'Did you eat breakfast?'}]},
+  {point:'～ませんか',meaning:'invitation (won\'t you?)',explain:'A polite way to invite someone to do something together.',ex:[
+    {jp:'お茶を飲みませんか。',romaji:'Ocha o nomimasen ka.',en:'Won\'t you have some tea?'},
+    {jp:'一緒に行きませんか。',romaji:'Issho ni ikimasen ka.',en:'Won\'t you go together?'},
+    {jp:'映画を見ませんか。',romaji:'Eiga o mimasen ka.',en:'Shall we watch a movie?'}]},
+  {point:'～ましょう',meaning:'let\'s ～',explain:'Suggests doing something together.',ex:[
+    {jp:'一緒に行きましょう。',romaji:'Issho ni ikimashō.',en:'Let\'s go together.'},
+    {jp:'始めましょう。',romaji:'Hajimemashō.',en:'Let\'s begin.'},
+    {jp:'ご飯を食べましょう。',romaji:'Gohan o tabemashō.',en:'Let\'s eat.'}]},
+  {point:'い-adjectives',meaning:'adjective type 1',explain:'End in い. Negative: drop い, add くない.',ex:[
+    {jp:'この本は高いです。',romaji:'Kono hon wa takai desu.',en:'This book is expensive.'},
+    {jp:'高くないです。',romaji:'Takakunai desu.',en:'It is not expensive.'},
+    {jp:'寒い日ですね。',romaji:'Samui hi desu ne.',en:'It is a cold day, isn\'t it?'}]},
+  {point:'な-adjectives',meaning:'adjective type 2',explain:'Take な before a noun; use です to end a sentence.',ex:[
+    {jp:'元気な人ですね。',romaji:'Genki na hito desu ne.',en:'You are an energetic person.'},
+    {jp:'この町は静かです。',romaji:'Kono machi wa shizuka desu.',en:'This town is quiet.'},
+    {jp:'有名なレストランです。',romaji:'Yūmei na resutoran desu.',en:'It is a famous restaurant.'}]},
+  {point:'これ / それ / あれ',meaning:'this / that / that over there',explain:'Stand-alone pronouns based on distance from speaker and listener.',ex:[
+    {jp:'これは何ですか。',romaji:'Kore wa nan desu ka.',en:'What is this?'},
+    {jp:'それは私のです。',romaji:'Sore wa watashi no desu.',en:'That is mine.'},
+    {jp:'あれは何ですか。',romaji:'Are wa nan desu ka.',en:'What is that over there?'}]},
+  {point:'この / その / あの + noun',meaning:'this/that ～',explain:'Used directly before a noun (unlike これ/それ/あれ).',ex:[
+    {jp:'この本を読みます。',romaji:'Kono hon o yomimasu.',en:'I will read this book.'},
+    {jp:'そのかばんは私のです。',romaji:'Sono kaban wa watashi no desu.',en:'That bag is mine.'},
+    {jp:'あの人は先生です。',romaji:'Ano hito wa sensei desu.',en:'That person is a teacher.'}]},
+  {point:'～たい',meaning:'want to ～',explain:'Attach to a verb stem to express your own desire to do something.',ex:[
+    {jp:'寿司が食べたいです。',romaji:'Sushi ga tabetai desu.',en:'I want to eat sushi.'},
+    {jp:'日本へ行きたいです。',romaji:'Nihon e ikitai desu.',en:'I want to go to Japan.'},
+    {jp:'何が買いたいですか。',romaji:'Nani ga kaitai desu ka.',en:'What do you want to buy?'}]},
+  {point:'～てください',meaning:'please do ～',explain:'Made from the て-form of a verb to make a polite request.',ex:[
+    {jp:'ここを見てください。',romaji:'Koko o mite kudasai.',en:'Please look here.'},
+    {jp:'ちょっと待ってください。',romaji:'Chotto matte kudasai.',en:'Please wait a moment.'},
+    {jp:'名前を書いてください。',romaji:'Namae o kaite kudasai.',en:'Please write your name.'}]},
+  {point:'～ています',meaning:'ongoing action / state',explain:'て-form + います shows an action in progress or a state.',ex:[
+    {jp:'今、ご飯を食べています。',romaji:'Ima, gohan o tabete imasu.',en:'I am eating now.'},
+    {jp:'雨が降っています。',romaji:'Ame ga futte imasu.',en:'It is raining.'},
+    {jp:'東京に住んでいます。',romaji:'Tōkyō ni sunde imasu.',en:'I live in Tokyo.'}]},
+  {point:'ある / いる',meaning:'there is / exists',explain:'ある for non-living things; いる for living things.',ex:[
+    {jp:'部屋に犬がいます。',romaji:'Heya ni inu ga imasu.',en:'There is a dog in the room.'},
+    {jp:'机の上に本があります。',romaji:'Tsukue no ue ni hon ga arimasu.',en:'There is a book on the desk.'},
+    {jp:'お金がありません。',romaji:'Okane ga arimasen.',en:'I have no money.'}]},
+  {point:'から / まで',meaning:'from / until',explain:'から marks a start point; まで marks an end point (time or place).',ex:[
+    {jp:'九時から五時まで働きます。',romaji:'Ku-ji kara go-ji made hatarakimasu.',en:'I work from nine to five.'},
+    {jp:'駅から家まで歩きます。',romaji:'Eki kara uchi made arukimasu.',en:'I walk from the station to home.'},
+    {jp:'月曜日から金曜日まで。',romaji:'Getsuyōbi kara kinyōbi made.',en:'From Monday to Friday.'}]},
+  {point:'～が、～',meaning:'but, however',explain:'Connects two clauses with a contrast.',ex:[
+    {jp:'高いですが、おいしいです。',romaji:'Takai desu ga, oishii desu.',en:'It is expensive, but delicious.'},
+    {jp:'日本語は難しいですが、面白いです。',romaji:'Nihongo wa muzukashii desu ga, omoshiroi desu.',en:'Japanese is hard, but interesting.'},
+    {jp:'行きたいですが、時間がありません。',romaji:'Ikitai desu ga, jikan ga arimasen.',en:'I want to go, but I have no time.'}]},
+  {point:'～じゃありません',meaning:'is not (noun)',explain:'The negative of です for nouns and な-adjectives. じゃない is casual.',ex:[
+    {jp:'これは本じゃありません。',romaji:'Kore wa hon ja arimasen.',en:'This is not a book.'},
+    {jp:'学生じゃありません。',romaji:'Gakusei ja arimasen.',en:'I am not a student.'},
+    {jp:'暇じゃありません。',romaji:'Hima ja arimasen.',en:'I am not free.'}]},
+  {point:'～でした',meaning:'was (noun, past)',explain:'Past tense of です. Negative past: ～じゃありませんでした.',ex:[
+    {jp:'昨日は休みでした。',romaji:'Kinō wa yasumi deshita.',en:'Yesterday was a day off.'},
+    {jp:'いい天気でした。',romaji:'Ii tenki deshita.',en:'It was nice weather.'},
+    {jp:'テストは簡単でした。',romaji:'Tesuto wa kantan deshita.',en:'The test was easy.'}]},
+  {point:'い-adjective past (～かった)',meaning:'was ～',explain:'Drop い and add かった for the past (いい→よかった).',ex:[
+    {jp:'旅行は楽しかったです。',romaji:'Ryokō wa tanoshikatta desu.',en:'The trip was fun.'},
+    {jp:'映画は面白かったです。',romaji:'Eiga wa omoshirokatta desu.',en:'The movie was interesting.'},
+    {jp:'おいしくなかったです。',romaji:'Oishikunakatta desu.',en:'It was not delicious.'}]},
+  {point:'～て (te-form)',meaning:'and (joining)',explain:'The て-form links verbs/clauses in sequence; い-adj use ～くて.',ex:[
+    {jp:'朝起きて、顔を洗います。',romaji:'Asa okite, kao o araimasu.',en:'I get up and wash my face.'},
+    {jp:'本を読んで、寝ます。',romaji:'Hon o yonde, nemasu.',en:'I read a book and go to sleep.'},
+    {jp:'安くて、おいしいです。',romaji:'Yasukute, oishii desu.',en:'It is cheap and delicious.'}]},
+  {point:'～から (because)',meaning:'because, so',explain:'Placed after a reason clause to mean "because".',ex:[
+    {jp:'忙しいから、行きません。',romaji:'Isogashii kara, ikimasen.',en:'I will not go because I am busy.'},
+    {jp:'寒いから、窓を閉めます。',romaji:'Samui kara, mado o shimemasu.',en:'Because it is cold, I will close the window.'},
+    {jp:'高いから、買いません。',romaji:'Takai kara, kaimasen.',en:'I will not buy it because it is expensive.'}]},
+  {point:'～ないでください',meaning:'please don\'t ～',explain:'From the ない-form of a verb — a polite request not to do something.',ex:[
+    {jp:'ここで写真を撮らないでください。',romaji:'Koko de shashin o toranaide kudasai.',en:'Please do not take photos here.'},
+    {jp:'心配しないでください。',romaji:'Shinpai shinaide kudasai.',en:'Please do not worry.'},
+    {jp:'ここに入らないでください。',romaji:'Koko ni hairanaide kudasai.',en:'Please do not enter here.'}]},
+  {point:'～ましょうか',meaning:'shall I / shall we?',explain:'Offers to do something or proposes doing it together.',ex:[
+    {jp:'窓を開けましょうか。',romaji:'Mado o akemashō ka.',en:'Shall I open the window?'},
+    {jp:'手伝いましょうか。',romaji:'Tetsudaimashō ka.',en:'Shall I help?'},
+    {jp:'何を作りましょうか。',romaji:'Nani o tsukurimashō ka.',en:'What shall we make?'}]},
+  {point:'～がほしい',meaning:'want (something)',explain:'Expresses desire for a thing (a noun). Marked with が.',ex:[
+    {jp:'新しいかばんがほしいです。',romaji:'Atarashii kaban ga hoshii desu.',en:'I want a new bag.'},
+    {jp:'水がほしいです。',romaji:'Mizu ga hoshii desu.',en:'I want some water.'},
+    {jp:'何がほしいですか。',romaji:'Nani ga hoshii desu ka.',en:'What do you want?'}]},
+  {point:'～が上手 / 下手',meaning:'good / bad at',explain:'Skill at something is marked with が + 上手 (good) or 下手 (bad).',ex:[
+    {jp:'妹は歌が上手です。',romaji:'Imōto wa uta ga jōzu desu.',en:'My sister is good at singing.'},
+    {jp:'私は料理が下手です。',romaji:'Watashi wa ryōri ga heta desu.',en:'I am bad at cooking.'},
+    {jp:'田中さんは日本語が上手です。',romaji:'Tanaka-san wa nihongo ga jōzu desu.',en:'Mr. Tanaka is good at Japanese.'}]},
+  {point:'もう / まだ',meaning:'already / not yet',explain:'もう = already (with past); まだ = still / not yet.',ex:[
+    {jp:'もう昼ご飯を食べました。',romaji:'Mō hirugohan o tabemashita.',en:'I already ate lunch.'},
+    {jp:'まだ食べていません。',romaji:'Mada tabete imasen.',en:'I have not eaten yet.'},
+    {jp:'もう帰りますか。',romaji:'Mō kaerimasu ka.',en:'Are you leaving already?'}]},
+  {point:'～や～',meaning:'and (examples)',explain:'Lists nouns as examples (non-exhaustive), unlike と (a full list).',ex:[
+    {jp:'机の上に本やペンがあります。',romaji:'Tsukue no ue ni hon ya pen ga arimasu.',en:'There are books, pens, and so on, on the desk.'},
+    {jp:'りんごやみかんを買いました。',romaji:'Ringo ya mikan o kaimashita.',en:'I bought apples, oranges, and the like.'},
+    {jp:'日曜日や月曜日は暇です。',romaji:'Nichiyōbi ya getsuyōbi wa hima desu.',en:'I am free on Sundays, Mondays, and so on.'}]},
+  {point:'～ね / ～よ',meaning:'sentence-end particles',explain:'ね seeks agreement ("right?"); よ adds emphasis / new info.',ex:[
+    {jp:'いい天気ですね。',romaji:'Ii tenki desu ne.',en:'Nice weather, isn\'t it?'},
+    {jp:'これは便利ですよ。',romaji:'Kore wa benri desu yo.',en:'This is convenient, you know.'},
+    {jp:'おいしいですね。',romaji:'Oishii desu ne.',en:'It is delicious, isn\'t it?'}]},
+  {point:'～くなる / ～になる',meaning:'become ～',explain:'い-adj: drop い + くなる. な-adj/noun: + になる.',ex:[
+    {jp:'寒くなりました。',romaji:'Samuku narimashita.',en:'It has gotten cold.'},
+    {jp:'日本語が上手になりました。',romaji:'Nihongo ga jōzu ni narimashita.',en:'My Japanese has gotten better.'},
+    {jp:'元気になりました。',romaji:'Genki ni narimashita.',en:'I have gotten well.'}]},
+  {point:'一番',meaning:'the most (superlative)',explain:'一番 + adjective marks the highest degree among a group.',ex:[
+    {jp:'富士山は日本で一番高い山です。',romaji:'Fujisan wa nihon de ichiban takai yama desu.',en:'Mt. Fuji is the tallest mountain in Japan.'},
+    {jp:'これが一番好きです。',romaji:'Kore ga ichiban suki desu.',en:'I like this one the most.'},
+    {jp:'だれが一番背が高いですか。',romaji:'Dare ga ichiban se ga takai desu ka.',en:'Who is the tallest?'}]},
+  {point:'～より',meaning:'than (comparison)',explain:'A は B より ～ = "A is more ~ than B".',ex:[
+    {jp:'電車はバスより速いです。',romaji:'Densha wa basu yori hayai desu.',en:'Trains are faster than buses.'},
+    {jp:'今日は昨日より暑いです。',romaji:'Kyō wa kinō yori atsui desu.',en:'Today is hotter than yesterday.'},
+    {jp:'私は兄より背が高いです。',romaji:'Watashi wa ani yori se ga takai desu.',en:'I am taller than my older brother.'}]},
+  {point:'～前に / ～後で',meaning:'before / after',explain:'Verb(dictionary)+前に = before doing; Verb(past た)+後で = after doing.',ex:[
+    {jp:'寝る前に歯を磨きます。',romaji:'Neru mae ni ha o migakimasu.',en:'I brush my teeth before sleeping.'},
+    {jp:'食べた後で、散歩します。',romaji:'Tabeta ato de, sanpo shimasu.',en:'After eating, I take a walk.'},
+    {jp:'仕事の後で、映画を見ます。',romaji:'Shigoto no ato de, eiga o mimasu.',en:'After work, I watch a movie.'}]}
 ];
 
 // (data file) JLPT N5 grammar & particle cloze questions. ＿ = blank. a = correct (must be in opts)
@@ -1967,12 +2151,20 @@ function mergeProg(a, b) {
   }).sort(function (x, y) {
     return x.t - y.t;
   }).slice(-50);
+  const examDate = a.examDate || b.examDate || '';
+  const daily = Object.assign({}, a.daily);
+  const bd = b.daily || {};
+  for (const d in bd) {
+    daily[d] = Object.assign({}, daily[d] || {}, bd[d] || {});
+  }
   return {
     known,
     best,
     srs,
     stats,
-    mockHistory
+    mockHistory,
+    examDate,
+    daily
   };
 }
 
@@ -2058,6 +2250,22 @@ function dueCount(srs) {
     }
   }
   return n;
+}
+function remainingNewInDeck(srs, deckId) {
+  const s = (srs || {})[deckId] || {};
+  const fronts = buildDeck(deckId).map(function (c) {
+    return c.front;
+  });
+  let n = 0;
+  for (let i = 0; i < fronts.length; i++) {
+    if (!s[fronts[i]]) n++;
+  }
+  return n;
+}
+function daysBetween(a, b) {
+  const pa = a.split('-').map(Number),
+    pb = b.split('-').map(Number);
+  return Math.round((new Date(pb[0], pb[1] - 1, pb[2]) - new Date(pa[0], pa[1] - 1, pa[2])) / 86400000);
 }
 
 /* ---------- daily streak & goal ---------- */
@@ -2194,29 +2402,22 @@ function useCloudProgress(uid) {
       } catch (e) {}
     };
   }, [uid]);
+  // updaters use Object.assign(prev,...) so every field (examDate, daily, mockHistory, …) is preserved
   const markKnown = (deck, front) => commit(prev => {
-    const d = Object.assign({}, prev.known[deck] || {});
+    const d = Object.assign({}, (prev.known || {})[deck] || {});
     if (d[front]) delete d[front];else d[front] = 1;
     const known = Object.assign({}, prev.known);
     known[deck] = d;
-    return {
-      known,
-      best: prev.best,
-      srs: prev.srs || {},
-      stats: prev.stats,
-      mockHistory: prev.mockHistory
-    };
+    return Object.assign({}, prev, {
+      known: known
+    });
   });
   const setBest = (mode, score) => commit(prev => {
     const best = Object.assign({}, prev.best);
     best[mode] = Math.max(best[mode] || 0, score);
-    return {
-      known: prev.known,
-      best,
-      srs: prev.srs || {},
-      stats: prev.stats,
-      mockHistory: prev.mockHistory
-    };
+    return Object.assign({}, prev, {
+      best: best
+    });
   });
   const reviewCard = (deck, front, grade) => commit(prev => {
     const srs = Object.assign({}, prev.srs || {});
@@ -2232,13 +2433,11 @@ function useCloudProgress(uid) {
     if (grade === 'again') delete kd[front];
     known[deck] = kd;
     const stats = bumpStats(prev.stats, dayStr());
-    return {
-      known,
-      best: prev.best,
-      srs,
-      stats,
-      mockHistory: prev.mockHistory
-    };
+    return Object.assign({}, prev, {
+      known: known,
+      srs: srs,
+      stats: stats
+    });
   });
   const setGoal = n => commit(prev => {
     const stats = Object.assign({
@@ -2250,13 +2449,9 @@ function useCloudProgress(uid) {
       todayCount: 0
     }, prev.stats || {});
     stats.goal = Math.max(5, Math.min(200, n));
-    return {
-      known: prev.known,
-      best: prev.best,
-      srs: prev.srs || {},
-      stats,
-      mockHistory: prev.mockHistory
-    };
+    return Object.assign({}, prev, {
+      stats: stats
+    });
   });
   const addMockResult = (score, total) => commit(prev => {
     const pct = Math.round(score / (total || 1) * 100);
@@ -2268,13 +2463,28 @@ function useCloudProgress(uid) {
     }]).slice(-50);
     const best = Object.assign({}, prev.best);
     best.mock = Math.max(best.mock || 0, score);
-    return {
-      known: prev.known,
+    return Object.assign({}, prev, {
       best: best,
-      srs: prev.srs || {},
-      stats: prev.stats,
       mockHistory: mockHistory
-    };
+    });
+  });
+  const setExamDate = d => commit(prev => Object.assign({}, prev, {
+    examDate: d || ''
+  }));
+  const toggleDaily = key => commit(prev => {
+    const t = dayStr();
+    const daily = Object.assign({}, prev.daily || {});
+    const day = Object.assign({}, daily[t] || {});
+    day[key] = !day[key];
+    daily[t] = day;
+    // keep only the last few days
+    const keys = Object.keys(daily).sort();
+    while (keys.length > 7) {
+      delete daily[keys.shift()];
+    }
+    return Object.assign({}, prev, {
+      daily: daily
+    });
   });
   return {
     prog,
@@ -2284,6 +2494,8 @@ function useCloudProgress(uid) {
     reviewCard,
     setGoal,
     addMockResult,
+    setExamDate,
+    toggleDaily,
     syncState
   };
 }
@@ -2553,11 +2765,133 @@ function NextLevel({
     className: "n4badge"
   }, "N4")));
 }
+function TodayPanel({
+  prog,
+  name,
+  setView,
+  toggleDaily,
+  setExamDate
+}) {
+  const srs = prog.srs || {};
+  const today = dayStr();
+  const daily = (prog.daily || {})[today] || {};
+  const due = dueCount(srs);
+  const rem = {};
+  let totalRem = 0,
+    maxDays = 0,
+    focus = null;
+  DECKS.forEach(function (d) {
+    const r = remainingNewInDeck(srs, d[0]);
+    rem[d[0]] = r;
+    totalRem += r;
+    maxDays = Math.max(maxDays, Math.ceil(r / NEW_PER_DAY));
+    if (!focus && r > 0) focus = d;
+  });
+  const focusDone = focus ? newIntroducedToday(srs[focus[0]] || {}, today) : 0;
+  const focusTarget = focus ? Math.min(rem[focus[0]], NEW_PER_DAY) : 0;
+  const tasks = [{
+    k: 'rev',
+    label: due > 0 ? 'Clear ' + due + ' due review' + (due === 1 ? '' : 's') : 'Reviews — all clear',
+    done: due === 0,
+    go: 'practice'
+  }, focus ? {
+    k: 'new',
+    label: 'Learn ' + focusTarget + ' new ' + focus[1] + ' · ' + focusDone + '/' + focusTarget,
+    done: focusDone >= focusTarget,
+    go: 'practice'
+  } : {
+    k: 'new',
+    label: 'All cards introduced — review only',
+    done: true,
+    go: 'practice'
+  }, {
+    k: 'quiz',
+    label: 'Do one quiz',
+    done: !!daily.quiz,
+    toggle: true,
+    go: 'practice',
+    gsub: 'quiz'
+  }, {
+    k: 'read',
+    label: 'One reading or listening',
+    done: !!daily.read,
+    toggle: true,
+    go: 'practice',
+    gsub: 'reading'
+  }];
+  const doneN = tasks.filter(function (t) {
+    return t.done;
+  }).length;
+  const allDone = doneN === tasks.length;
+  const exam = prog.examDate || '';
+  let dToExam = null,
+    onTrack = null;
+  if (exam) {
+    dToExam = daysBetween(today, exam);
+    onTrack = maxDays <= Math.max(dToExam - 7, 0);
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "today"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "today-h"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "ey"
+  }, allDone ? 'Today · complete 🎉' : "Today's plan"), /*#__PURE__*/React.createElement("h3", null, allDone ? 'Nice work, ' + name + '!' : 'Hi ' + name + ' — ' + doneN + ' of ' + tasks.length + ' done')), /*#__PURE__*/React.createElement("div", {
+    className: cx('tring', allDone && 'full')
+  }, doneN, "/", tasks.length)), /*#__PURE__*/React.createElement("div", {
+    className: "tasklist"
+  }, tasks.map(function (t) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: cx('task', t.done && 'done'),
+      key: t.k
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "tck",
+      disabled: !t.toggle,
+      onClick: t.toggle ? function () {
+        toggleDaily(t.k);
+      } : undefined,
+      "aria-label": t.done ? 'done' : 'mark done'
+    }, t.done ? '✓' : ''), /*#__PURE__*/React.createElement("span", {
+      className: "tlb",
+      onClick: function () {
+        setView(t.go, t.gsub);
+      }
+    }, t.label), /*#__PURE__*/React.createElement("button", {
+      className: "tgo",
+      onClick: function () {
+        setView(t.go, t.gsub);
+      },
+      "aria-label": "open"
+    }, "\u2192"));
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "pace"
+  }, allDone ? /*#__PURE__*/React.createElement("span", {
+    className: "pace-ok"
+  }, "\u2713 Today's plan complete \u2014 you're on pace. See you tomorrow!") : exam ? /*#__PURE__*/React.createElement("span", null, "JLPT in ", /*#__PURE__*/React.createElement("b", null, dToExam), " day", dToExam === 1 ? '' : 's', " \xB7 ", totalRem > 0 ? '~' + maxDays + ' days of new material left' : 'all material learned', " \xB7 ", /*#__PURE__*/React.createElement("b", {
+    className: onTrack ? 'ontrack' : 'behind'
+  }, onTrack ? 'on track ✓' : 'pick up the pace ⚠')) : /*#__PURE__*/React.createElement("span", null, totalRem > 0 ? 'At ~' + NEW_PER_DAY + '/day, you\'ll have seen everything in about ' + maxDays + ' days.' : 'You\'ve introduced all the material — keep reviewing!'), /*#__PURE__*/React.createElement("div", {
+    className: "examrow"
+  }, /*#__PURE__*/React.createElement("label", null, "Target exam date"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    className: "dateinp",
+    value: exam,
+    onChange: function (e) {
+      setExamDate(e.target.value);
+    }
+  }), exam && /*#__PURE__*/React.createElement("button", {
+    className: "swlink",
+    onClick: function () {
+      setExamDate('');
+    }
+  }, "clear"))));
+}
 function Home({
   setView,
   name,
   prog,
-  setGoal
+  setGoal,
+  toggleDaily,
+  setExamDate
 }) {
   const known = prog.known || {};
   const knownCount = Object.keys(known).reduce((a, k) => a + Object.keys(known[k] || {}).length, 0);
@@ -2571,23 +2905,13 @@ function Home({
     className: "kicker"
   }, "\u25CF JLPT N5 \xB7 Beginner"), /*#__PURE__*/React.createElement("h1", null, "Learn Japanese", /*#__PURE__*/React.createElement("br", null), "from ", /*#__PURE__*/React.createElement("span", {
     className: "jp"
-  }, "\u30BC\u30ED"), " to N5."), /*#__PURE__*/React.createElement("p", null, "A calm, focused place to master the JLPT N5: read the reference once, then lock it in with flashcards and quizzes \u2014 with audio, and your progress synced to every device."), /*#__PURE__*/React.createElement("div", {
-    className: "greet"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "ava"
-  }, (name || 'U').charAt(0).toUpperCase()), /*#__PURE__*/React.createElement("div", {
-    className: "gt"
-  }, /*#__PURE__*/React.createElement("b", null, "Welcome back, ", name, "!"), /*#__PURE__*/React.createElement("span", null, knownCount > 0 ? 'Pick up where you left off.' : 'Mark cards as known to track your progress.')), /*#__PURE__*/React.createElement("div", {
-    className: "gp"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "lab"
-  }, /*#__PURE__*/React.createElement("span", null, "Cards known"), /*#__PURE__*/React.createElement("span", null, knownCount, " / ", TOTAL_CARDS)), /*#__PURE__*/React.createElement("div", {
-    className: "pbar"
-  }, /*#__PURE__*/React.createElement("i", {
-    style: {
-      width: Math.max(pct, 2) + '%'
-    }
-  })))), /*#__PURE__*/React.createElement(StreakCard, {
+  }, "\u30BC\u30ED"), " to N5."), /*#__PURE__*/React.createElement("p", null, "A calm, focused place to master the JLPT N5: read the reference once, then lock it in with flashcards and quizzes \u2014 with audio, and your progress synced to every device."), /*#__PURE__*/React.createElement(TodayPanel, {
+    prog: prog,
+    name: name,
+    setView: setView,
+    toggleDaily: toggleDaily,
+    setExamDate: setExamDate
+  }), /*#__PURE__*/React.createElement(StreakCard, {
     prog: prog,
     setGoal: setGoal
   }), /*#__PURE__*/React.createElement("div", {
@@ -3195,7 +3519,7 @@ function Quiz({
   const pct = Math.round(score / N * 100);
   const msg = pct === 100 ? 'Perfect! 完璧です！' : pct >= 70 ? 'Great work — keep going!' : pct >= 40 ? 'Good start. Review and retry.' : 'Keep practicing — you\'ve got this.';
   const reveal = picked !== null;
-  const promptLbl = mode === 'listen' ? 'Listen, then choose the meaning' : mode === 'grammar' ? 'Choose the correct word' : 'What does this mean?';
+  const promptLbl = mode === 'listen' ? 'Listen, then choose the meaning' : mode === 'grammar' ? 'Choose the correct word' : mode === 'kana' ? 'What is the reading?' : 'What does this mean?';
   return /*#__PURE__*/React.createElement("div", {
     className: "quiz-wrap"
   }, /*#__PURE__*/React.createElement("div", {
@@ -4225,7 +4549,9 @@ function App({
     setView: navigate,
     name: user.name,
     prog: cp.prog,
-    setGoal: cp.setGoal
+    setGoal: cp.setGoal,
+    toggleDaily: cp.toggleDaily,
+    setExamDate: cp.setExamDate
   }), view === 'kana' && /*#__PURE__*/React.createElement(KanaView, null), view === 'kanji' && /*#__PURE__*/React.createElement(KanjiView, null), view === 'vocab' && /*#__PURE__*/React.createElement(VocabView, null), view === 'grammar' && /*#__PURE__*/React.createElement(GrammarView, null), view === 'practice' && /*#__PURE__*/React.createElement(Practice, {
     cp: cp,
     tool: route.sub || 'review',

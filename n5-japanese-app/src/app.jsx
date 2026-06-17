@@ -66,7 +66,10 @@ function mergeProg(a,b){
   const stats=mergeStats(a.stats,b.stats);
   const mh={}; (a.mockHistory||[]).concat(b.mockHistory||[]).forEach(function(x){ if(x&&x.t!=null) mh[x.t]=x; });
   const mockHistory=Object.keys(mh).map(function(k){return mh[k];}).sort(function(x,y){return x.t-y.t;}).slice(-50);
-  return {known, best, srs, stats, mockHistory};
+  const examDate=a.examDate||b.examDate||'';
+  const daily=Object.assign({}, a.daily); const bd=b.daily||{};
+  for(const d in bd){ daily[d]=Object.assign({}, daily[d]||{}, bd[d]||{}); }
+  return {known, best, srs, stats, mockHistory, examDate, daily};
 }
 
 /* ---------- spaced repetition (SM-2 lite) ---------- */
@@ -95,6 +98,8 @@ function buildQueue(cards, srsDeck, today){
   return due.concat(fresh);
 }
 function dueCount(srs){ const now=Date.now(); let n=0; const s=srs||{}; for(const d in s){ for(const f in s[d]){ if(s[d][f].due<=now)n++; } } return n; }
+function remainingNewInDeck(srs, deckId){ const s=(srs||{})[deckId]||{}; const fronts=buildDeck(deckId).map(function(c){return c.front;}); let n=0; for(let i=0;i<fronts.length;i++){ if(!s[fronts[i]])n++; } return n; }
+function daysBetween(a,b){ const pa=a.split('-').map(Number), pb=b.split('-').map(Number); return Math.round((new Date(pb[0],pb[1]-1,pb[2]) - new Date(pa[0],pa[1]-1,pa[2]))/86400000); }
 
 /* ---------- daily streak & goal ---------- */
 function dayStr(d){ d=d||new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -142,8 +147,9 @@ function useCloudProgress(uid){
     try{ document.addEventListener('visibilitychange',onVis); window.addEventListener('pagehide',flush); }catch(e){}
     return ()=>{ try{ document.removeEventListener('visibilitychange',onVis); window.removeEventListener('pagehide',flush); }catch(e){} };
   },[uid]);
-  const markKnown=(deck,front)=>commit(prev=>{ const d=Object.assign({},prev.known[deck]||{}); if(d[front])delete d[front]; else d[front]=1; const known=Object.assign({},prev.known); known[deck]=d; return {known,best:prev.best,srs:prev.srs||{},stats:prev.stats,mockHistory:prev.mockHistory}; });
-  const setBest=(mode,score)=>commit(prev=>{ const best=Object.assign({},prev.best); best[mode]=Math.max(best[mode]||0,score); return {known:prev.known,best,srs:prev.srs||{},stats:prev.stats,mockHistory:prev.mockHistory}; });
+  // updaters use Object.assign(prev,...) so every field (examDate, daily, mockHistory, …) is preserved
+  const markKnown=(deck,front)=>commit(prev=>{ const d=Object.assign({},(prev.known||{})[deck]||{}); if(d[front])delete d[front]; else d[front]=1; const known=Object.assign({},prev.known); known[deck]=d; return Object.assign({},prev,{known:known}); });
+  const setBest=(mode,score)=>commit(prev=>{ const best=Object.assign({},prev.best); best[mode]=Math.max(best[mode]||0,score); return Object.assign({},prev,{best:best}); });
   const reviewCard=(deck,front,grade)=>commit(prev=>{
     const srs=Object.assign({}, prev.srs||{}); const dd=Object.assign({}, srs[deck]||{});
     const prevCard=dd[front];
@@ -154,16 +160,24 @@ function useCloudProgress(uid){
     if(grade!=='again' && ns.reps>=2) kd[front]=1; if(grade==='again') delete kd[front];
     known[deck]=kd;
     const stats=bumpStats(prev.stats, dayStr());
-    return {known, best:prev.best, srs, stats, mockHistory:prev.mockHistory};
+    return Object.assign({},prev,{known:known, srs:srs, stats:stats});
   });
-  const setGoal=(n)=>commit(prev=>{ const stats=Object.assign({streak:0,best:0,lastActive:'',goal:20,todayDate:'',todayCount:0}, prev.stats||{}); stats.goal=Math.max(5,Math.min(200,n)); return {known:prev.known,best:prev.best,srs:prev.srs||{},stats,mockHistory:prev.mockHistory}; });
+  const setGoal=(n)=>commit(prev=>{ const stats=Object.assign({streak:0,best:0,lastActive:'',goal:20,todayDate:'',todayCount:0}, prev.stats||{}); stats.goal=Math.max(5,Math.min(200,n)); return Object.assign({},prev,{stats:stats}); });
   const addMockResult=(score,total)=>commit(prev=>{
     const pct=Math.round(score/(total||1)*100);
     const mockHistory=(prev.mockHistory||[]).concat([{t:Date.now(),score:score,total:total,pct:pct}]).slice(-50);
     const best=Object.assign({},prev.best); best.mock=Math.max(best.mock||0,score);
-    return {known:prev.known,best:best,srs:prev.srs||{},stats:prev.stats,mockHistory:mockHistory};
+    return Object.assign({},prev,{best:best, mockHistory:mockHistory});
   });
-  return { prog, loaded, markKnown, setBest, reviewCard, setGoal, addMockResult, syncState };
+  const setExamDate=(d)=>commit(prev=>Object.assign({},prev,{examDate:d||''}));
+  const toggleDaily=(key)=>commit(prev=>{
+    const t=dayStr(); const daily=Object.assign({}, prev.daily||{}); const day=Object.assign({}, daily[t]||{});
+    day[key]=!day[key]; daily[t]=day;
+    // keep only the last few days
+    const keys=Object.keys(daily).sort(); while(keys.length>7){ delete daily[keys.shift()]; }
+    return Object.assign({},prev,{daily:daily});
+  });
+  return { prog, loaded, markKnown, setBest, reviewCard, setGoal, addMockResult, setExamDate, toggleDaily, syncState };
 }
 
 /* ---------- voice (Web Speech API) ---------- */
@@ -296,7 +310,59 @@ function NextLevel({pct}){
     </section>
   );
 }
-function Home({setView,name,prog,setGoal}){
+function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
+  const srs=prog.srs||{};
+  const today=dayStr();
+  const daily=(prog.daily||{})[today]||{};
+  const due=dueCount(srs);
+  const rem={}; let totalRem=0, maxDays=0, focus=null;
+  DECKS.forEach(function(d){ const r=remainingNewInDeck(srs,d[0]); rem[d[0]]=r; totalRem+=r; maxDays=Math.max(maxDays,Math.ceil(r/NEW_PER_DAY)); if(!focus&&r>0)focus=d; });
+  const focusDone = focus ? newIntroducedToday(srs[focus[0]]||{}, today) : 0;
+  const focusTarget = focus ? Math.min(rem[focus[0]], NEW_PER_DAY) : 0;
+  const tasks=[
+    {k:'rev', label: due>0?('Clear '+due+' due review'+(due===1?'':'s')):'Reviews — all clear', done: due===0, go:'practice'},
+    focus ? {k:'new', label:'Learn '+focusTarget+' new '+focus[1]+' · '+focusDone+'/'+focusTarget, done: focusDone>=focusTarget, go:'practice'}
+          : {k:'new', label:'All cards introduced — review only', done:true, go:'practice'},
+    {k:'quiz', label:'Do one quiz', done:!!daily.quiz, toggle:true, go:'practice', gsub:'quiz'},
+    {k:'read', label:'One reading or listening', done:!!daily.read, toggle:true, go:'practice', gsub:'reading'}
+  ];
+  const doneN=tasks.filter(function(t){return t.done;}).length;
+  const allDone=doneN===tasks.length;
+  const exam=prog.examDate||'';
+  let dToExam=null, onTrack=null;
+  if(exam){ dToExam=daysBetween(today,exam); onTrack = maxDays <= Math.max(dToExam-7,0); }
+  return (
+    <div className="today">
+      <div className="today-h">
+        <div><div className="ey">{allDone?'Today · complete 🎉':"Today's plan"}</div><h3>{allDone?('Nice work, '+name+'!'):('Hi '+name+' — '+doneN+' of '+tasks.length+' done')}</h3></div>
+        <div className={cx('tring',allDone&&'full')}>{doneN}/{tasks.length}</div>
+      </div>
+      <div className="tasklist">
+        {tasks.map(function(t){ return (
+          <div className={cx('task',t.done&&'done')} key={t.k}>
+            <button className="tck" disabled={!t.toggle} onClick={t.toggle?function(){toggleDaily(t.k);}:undefined} aria-label={t.done?'done':'mark done'}>{t.done?'✓':''}</button>
+            <span className="tlb" onClick={function(){ setView(t.go, t.gsub); }}>{t.label}</span>
+            <button className="tgo" onClick={function(){ setView(t.go, t.gsub); }} aria-label="open">→</button>
+          </div>
+        ); })}
+      </div>
+      <div className="pace">
+        {allDone
+          ? <span className="pace-ok">✓ Today's plan complete — you're on pace. See you tomorrow!</span>
+          : (exam
+              ? <span>JLPT in <b>{dToExam}</b> day{dToExam===1?'':'s'} · {totalRem>0?('~'+maxDays+' days of new material left'):'all material learned'} · <b className={onTrack?'ontrack':'behind'}>{onTrack?'on track ✓':'pick up the pace ⚠'}</b></span>
+              : <span>{totalRem>0?('At ~'+NEW_PER_DAY+'/day, you\'ll have seen everything in about '+maxDays+' days.'):'You\'ve introduced all the material — keep reviewing!'}</span>)
+        }
+        <div className="examrow">
+          <label>Target exam date</label>
+          <input type="date" className="dateinp" value={exam} onChange={function(e){ setExamDate(e.target.value); }}/>
+          {exam && <button className="swlink" onClick={function(){ setExamDate(''); }}>clear</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+function Home({setView,name,prog,setGoal,toggleDaily,setExamDate}){
   const known = prog.known||{};
   const knownCount = Object.keys(known).reduce((a,k)=>a+Object.keys(known[k]||{}).length,0);
   const pct = Math.round(knownCount/TOTAL_CARDS*100);
@@ -318,14 +384,7 @@ function Home({setView,name,prog,setGoal}){
         <span className="kicker">● JLPT N5 · Beginner</span>
         <h1>Learn Japanese<br/>from <span className="jp">ゼロ</span> to N5.</h1>
         <p>A calm, focused place to master the JLPT N5: read the reference once, then lock it in with flashcards and quizzes — with audio, and your progress synced to every device.</p>
-        <div className="greet">
-          <span className="ava">{(name||'U').charAt(0).toUpperCase()}</span>
-          <div className="gt"><b>Welcome back, {name}!</b><span>{knownCount>0?'Pick up where you left off.':'Mark cards as known to track your progress.'}</span></div>
-          <div className="gp">
-            <div className="lab"><span>Cards known</span><span>{knownCount} / {TOTAL_CARDS}</span></div>
-            <div className="pbar"><i style={{width:Math.max(pct,2)+'%'}}/></div>
-          </div>
-        </div>
+        <TodayPanel prog={prog} name={name} setView={setView} toggleDaily={toggleDaily} setExamDate={setExamDate}/>
         <StreakCard prog={prog} setGoal={setGoal}/>
         <div className="cta">
           {dueN>0
@@ -565,7 +624,7 @@ function Quiz({cp}){
   const pct=Math.round(score/N*100);
   const msg=pct===100?'Perfect! 完璧です！':pct>=70?'Great work — keep going!':pct>=40?'Good start. Review and retry.':'Keep practicing — you\'ve got this.';
   const reveal = picked!==null;
-  const promptLbl = mode==='listen'?'Listen, then choose the meaning':(mode==='grammar'?'Choose the correct word':'What does this mean?');
+  const promptLbl = mode==='listen'?'Listen, then choose the meaning':(mode==='grammar'?'Choose the correct word':(mode==='kana'?'What is the reading?':'What does this mean?'));
   return (
     <div className="quiz-wrap">
       <div className="chips" style={{justifyContent:'center',marginBottom:(mode==='vocab'||mode==='listen')?12:22}}>{QUIZZES.map(([id,l])=>(<span key={id} className={cx('chip',mode===id&&'on')} onClick={()=>changeMode(id)}>{l}</span>))}</div>
@@ -984,7 +1043,7 @@ function App({user,onSignOut}){
     <div className="app">
       <Nav view={view} navigate={navigate} user={user} onSignOut={onSignOut} syncState={cp.syncState}/>
       <main className="main">
-        {view==='home' && <Home setView={navigate} name={user.name} prog={cp.prog} setGoal={cp.setGoal}/>}
+        {view==='home' && <Home setView={navigate} name={user.name} prog={cp.prog} setGoal={cp.setGoal} toggleDaily={cp.toggleDaily} setExamDate={cp.setExamDate}/>}
         {view==='kana' && <KanaView/>}
         {view==='kanji' && <KanjiView/>}
         {view==='vocab' && <VocabView/>}
