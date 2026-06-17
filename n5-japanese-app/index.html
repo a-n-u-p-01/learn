@@ -444,6 +444,23 @@ section{scroll-margin-top:84px}
 .reading-card{background:linear-gradient(180deg,var(--bg-2),var(--bg-1));border:1px solid var(--line-2);border-radius:var(--r-lg);padding:clamp(20px,4vw,30px);box-shadow:var(--shadow);margin-bottom:20px}
 .reading-card .rtitle{font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--accent-2);margin-bottom:14px}
 .reading-card .rjp{font-family:var(--jp);font-size:clamp(17px,3vw,20px);line-height:2;white-space:pre-line}
+.rseg{border-radius:5px;transition:background .15s,color .15s}
+.rseg.on{background:var(--accent);color:#fff;box-shadow:0 0 0 2px var(--accent)}
+
+/* ---- numbers / time / counters ---- */
+.numgrid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr))}
+.numcell{aspect-ratio:auto;padding:14px 8px;gap:3px}
+.numcell .njp{font-family:var(--jp);font-size:21px;font-weight:500;color:#fff;line-height:1.1}
+.numcell .nk{font-family:var(--jp);font-size:13px;color:var(--accent-2)}
+.numcell .ne{font-size:11px;color:var(--muted)}
+.counters{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.ccard{background:var(--bg-1);border:1px solid var(--line);border-radius:var(--r);padding:15px 17px}
+.cc-top{display:flex;align-items:center;gap:9px}
+.cc-c{font-family:var(--jp);font-size:20px;font-weight:700}
+.cc-k{font-size:12px;color:var(--faint);font-weight:600}
+.cc-top .spk{margin-left:auto}
+.cc-use{font-size:13px;color:var(--muted);margin-top:5px}
+.cc-ex{font-family:var(--jp);font-size:14px;color:var(--accent-2);margin-top:8px;border-top:1px solid var(--line);padding-top:8px;line-height:1.7}
 .reading-card .rro{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--accent-2);font-size:14px;line-height:1.75;font-style:italic}
 .reading-card .ren{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:14px;line-height:1.7}
 .r-tools{display:flex;align-items:center;gap:12px}
@@ -2009,6 +2026,62 @@ var READING = [
     ]
   }
 ];
+
+// JLPT N5 numbers, time & counters reference
+var NUMBERS = {
+  hours: [
+    {jp:'一時',k:'いちじ',e:'1:00'},
+    {jp:'二時',k:'にじ',e:'2:00'},
+    {jp:'三時',k:'さんじ',e:'3:00'},
+    {jp:'四時',k:'よじ',e:'4:00 ·irregular'},
+    {jp:'五時',k:'ごじ',e:'5:00'},
+    {jp:'六時',k:'ろくじ',e:'6:00'},
+    {jp:'七時',k:'しちじ',e:'7:00 ·irregular'},
+    {jp:'八時',k:'はちじ',e:'8:00'},
+    {jp:'九時',k:'くじ',e:'9:00 ·irregular'},
+    {jp:'十時',k:'じゅうじ',e:'10:00'},
+    {jp:'十一時',k:'じゅういちじ',e:'11:00'},
+    {jp:'十二時',k:'じゅうにじ',e:'12:00'}
+  ],
+  minutes: [
+    {jp:'一分',k:'いっぷん',e:'1 min'},
+    {jp:'二分',k:'にふん',e:'2 min'},
+    {jp:'三分',k:'さんぷん',e:'3 min'},
+    {jp:'四分',k:'よんぷん',e:'4 min'},
+    {jp:'五分',k:'ごふん',e:'5 min'},
+    {jp:'六分',k:'ろっぷん',e:'6 min'},
+    {jp:'七分',k:'ななふん',e:'7 min'},
+    {jp:'八分',k:'はっぷん',e:'8 min'},
+    {jp:'九分',k:'きゅうふん',e:'9 min'},
+    {jp:'十分',k:'じゅっぷん',e:'10 min'},
+    {jp:'三十分',k:'さんじゅっぷん',e:'30 min'},
+    {jp:'半',k:'はん',e:'half past'}
+  ],
+  big: [
+    {jp:'百',k:'ひゃく',e:'100'},
+    {jp:'三百',k:'さんびゃく',e:'300 ·sound change'},
+    {jp:'六百',k:'ろっぴゃく',e:'600 ·sound change'},
+    {jp:'八百',k:'はっぴゃく',e:'800 ·sound change'},
+    {jp:'千',k:'せん',e:'1,000'},
+    {jp:'三千',k:'さんぜん',e:'3,000 ·sound change'},
+    {jp:'八千',k:'はっせん',e:'8,000 ·sound change'},
+    {jp:'一万',k:'いちまん',e:'10,000'}
+  ],
+  counters: [
+    {c:'〜つ',k:'-tsu',use:'general things (1–10)',ex:'ひとつ・ふたつ・みっつ … とお',say:'ひとつ、ふたつ、みっつ'},
+    {c:'〜人',k:'-nin',use:'people',ex:'ひとり・ふたり・さんにん・よにん',say:'ひとり、ふたり、さんにん'},
+    {c:'〜本',k:'-hon',use:'long thin things',ex:'いっぽん・にほん・さんぼん・ろっぽん',say:'いっぽん、にほん、さんぼん'},
+    {c:'〜枚',k:'-mai',use:'flat thin things',ex:'いちまい・にまい・さんまい',say:'いちまい、にまい、さんまい'},
+    {c:'〜冊',k:'-satsu',use:'books, magazines',ex:'いっさつ・にさつ・さんさつ',say:'いっさつ、にさつ、さんさつ'},
+    {c:'〜匹',k:'-hiki',use:'small animals',ex:'いっぴき・にひき・さんびき',say:'いっぴき、にひき、さんびき'},
+    {c:'〜台',k:'-dai',use:'machines, vehicles',ex:'いちだい・にだい・さんだい',say:'いちだい、にだい、さんだい'},
+    {c:'〜回',k:'-kai',use:'times (frequency)',ex:'いっかい・にかい・さんかい',say:'いっかい、にかい、さんかい'},
+    {c:'〜歳 / 才',k:'-sai',use:'age',ex:'いっさい・にさい …（20＝はたち）',say:'いっさい、にさい、はたち'},
+    {c:'〜円',k:'-en',use:'yen (money)',ex:'ひゃくえん・せんえん',say:'ひゃくえん、せんえん'},
+    {c:'〜時間',k:'-jikan',use:'hours (duration)',ex:'いちじかん・にじかん・さんじかん',say:'いちじかん、にじかん'},
+    {c:'〜番',k:'-ban',use:'order / number',ex:'いちばん・にばん・さんばん',say:'いちばん、にばん、さんばん'}
+  ]
+};
 </script>
 <script>/* global React, ReactDOM, firebase, KANA, KANJI, VOCAB, GRAMMAR */
 const {
@@ -2031,7 +2104,7 @@ function shuffle(arr) {
 const cx = (...a) => a.filter(Boolean).join(' ');
 
 /* ---------- hash routing ---------- */
-const VIEWS = ['home', 'kana', 'kanji', 'vocab', 'grammar', 'practice'];
+const VIEWS = ['home', 'kana', 'kanji', 'vocab', 'grammar', 'numbers', 'practice'];
 function parseHash() {
   let h = '';
   try {
@@ -2518,15 +2591,40 @@ if (speechSupported) {
     window.speechSynthesis.onvoiceschanged = _loadVoices;
   } catch (e) {}
 }
-function speak(text) {
+let _warmed = false;
+function warmSpeech() {
+  if (_warmed || !speechSupported) return;
+  _warmed = true;
+  try {
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+  } catch (e) {}
+}
+function speak(text, h) {
   if (!speechSupported || !text) return;
   try {
+    const synth = window.speechSynthesis;
+    if (synth.speaking || synth.pending) synth.cancel(); // only cancel when needed (less lag)
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'ja-JP';
     if (JA_VOICE) u.voice = JA_VOICE;
     u.rate = 0.85;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
+    if (h && h.boundary) {
+      try {
+        u.onboundary = h.boundary;
+      } catch (e) {}
+    }
+    if (h && h.end) {
+      try {
+        u.onend = h.end;
+        u.onerror = h.end;
+      } catch (e) {}
+    }
+    try {
+      synth.resume();
+    } catch (e) {} // Chrome sometimes auto-pauses the engine
+    synth.speak(u);
   } catch (e) {}
 }
 function SpeakBtn({
@@ -2996,6 +3094,14 @@ function Home({
     className: "n"
   }, "\u6587\u6CD5"), /*#__PURE__*/React.createElement("h3", null, "Grammar"), /*#__PURE__*/React.createElement("p", null, "Every core N5 pattern with a spoken example sentence.")), /*#__PURE__*/React.createElement("div", {
     className: "ocard",
+    onClick: () => setView('numbers'),
+    style: {
+      cursor: 'pointer'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "n"
+  }, "\u6570\u5B57"), /*#__PURE__*/React.createElement("h3", null, "Numbers"), /*#__PURE__*/React.createElement("p", null, "Telling time, counters, money, and tricky number readings.")), /*#__PURE__*/React.createElement("div", {
+    className: "ocard",
     onClick: () => setView('practice'),
     style: {
       cursor: 'pointer'
@@ -3200,6 +3306,80 @@ function GrammarView() {
   }, e.en)))))));
 }
 
+/* ---------- numbers, time & counters ---------- */
+function NumGrid({
+  items
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "kana-grid numgrid"
+  }, items.map(function (x, i) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "kcell numcell",
+      key: x.jp + i,
+      onClick: () => speak(x.k),
+      title: "Tap to hear"
+    }, /*#__PURE__*/React.createElement(SpeakBtn, {
+      text: x.k,
+      label: x.e
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "njp"
+    }, x.jp), /*#__PURE__*/React.createElement("span", {
+      className: "nk"
+    }, x.k), /*#__PURE__*/React.createElement("span", {
+      className: "ne"
+    }, x.e));
+  }));
+}
+function NumbersView() {
+  return /*#__PURE__*/React.createElement("section", {
+    className: "block wrap"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "shead"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "ey"
+  }, "Numbers \xB7 \u6570\u5B57"), /*#__PURE__*/React.createElement("h2", null, "Numbers, Time & Counters"), /*#__PURE__*/React.createElement("p", null, "Telling time, counting things, and the tricky sound-changes N5 loves to test. Tap any item to hear it."))), /*#__PURE__*/React.createElement("div", {
+    className: "kana-sub"
+  }, "Telling time \u2014 \u301C\u6642 (o'clock)"), /*#__PURE__*/React.createElement(NumGrid, {
+    items: NUMBERS.hours
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "kana-sub"
+  }, "Minutes \u2014 \u301C\u5206 & \u534A (half past)"), /*#__PURE__*/React.createElement(NumGrid, {
+    items: NUMBERS.minutes
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "kana-sub"
+  }, "Big numbers & sound changes"), /*#__PURE__*/React.createElement(NumGrid, {
+    items: NUMBERS.big
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "kana-sub"
+  }, "Counters \u2014 how to count things"), /*#__PURE__*/React.createElement("div", {
+    className: "counters"
+  }, NUMBERS.counters.map(function (c, i) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "ccard",
+      key: i
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "cc-top"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "cc-c"
+    }, c.c), /*#__PURE__*/React.createElement("span", {
+      className: "cc-k"
+    }, c.k), /*#__PURE__*/React.createElement(SpeakBtn, {
+      text: c.say,
+      label: c.use
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "cc-use"
+    }, c.use), /*#__PURE__*/React.createElement("div", {
+      className: "cc-ex"
+    }, c.ex));
+  })), /*#__PURE__*/React.createElement("p", {
+    className: "muted center",
+    style: {
+      marginTop: 24,
+      fontSize: '13px'
+    }
+  }, "\u5348\u524D (\u3054\u305C\u3093) = a.m. \xB7 \u5348\u5F8C (\u3054\u3054) = p.m. \xB7 e.g. \u5348\u5F8C\u4E09\u6642\u534A = 3:30 p.m."));
+}
+
 /* ---------- flashcards ---------- */
 function buildDeck(id) {
   if (id === 'hira') return KANA_HIRA.map(x => ({
@@ -3296,6 +3476,7 @@ function Flashcards({
     className: "fc-count"
   }, "Known ", /*#__PURE__*/React.createElement("b", null, knownCount), " / ", order.length)), /*#__PURE__*/React.createElement("div", {
     className: cx('flashcard', flip && 'flipped'),
+    key: card.front,
     onClick: () => setFlip(f => !f)
   }, /*#__PURE__*/React.createElement("div", {
     className: "fc-inner"
@@ -3772,6 +3953,7 @@ function Review({
     }
   })), /*#__PURE__*/React.createElement("div", {
     className: cx('flashcard', reveal && 'flipped'),
+    key: card.front,
     onClick: () => setReveal(r => !r)
   }, /*#__PURE__*/React.createElement("div", {
     className: "fc-inner"
@@ -3833,13 +4015,53 @@ function Review({
 }
 
 /* ---------- reading ---------- */
+function splitSentences(text) {
+  const out = [];
+  let buf = '',
+    start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    buf += ch;
+    if (ch === '。' || ch === '！' || ch === '？' || ch === '\n') {
+      out.push({
+        t: buf,
+        start: start
+      });
+      start = i + 1;
+      buf = '';
+    }
+  }
+  if (buf) out.push({
+    t: buf,
+    start: start
+  });
+  return out;
+}
 function Reading() {
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState({});
   const [showEn, setShowEn] = useState(false);
   const [showRo, setShowRo] = useState(false);
+  const [active, setActive] = useState(-1);
   const p = READING[idx];
+  const segs = useMemo(() => splitSentences(p.jp), [idx, p.jp]);
+  const timersRef = useRef([]);
+  const bdyRef = useRef(false);
+  const clearTimers = () => {
+    timersRef.current.forEach(function (t) {
+      clearTimeout(t);
+    });
+    timersRef.current = [];
+  };
+  const stopAudio = () => {
+    clearTimers();
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {}
+  };
+  useEffect(() => () => stopAudio(), []);
   const go = d => {
+    stopAudio();
     setIdx(i => {
       const n = i + d;
       if (n < 0) return READING.length - 1;
@@ -3849,12 +4071,53 @@ function Reading() {
     setPicked({});
     setShowEn(false);
     setShowRo(false);
+    setActive(-1);
     try {
       window.scrollTo({
         top: 0,
         behavior: 'smooth'
       });
     } catch (e) {}
+  };
+  const play = () => {
+    clearTimers();
+    bdyRef.current = false;
+    const sgs = segs;
+    setActive(0);
+    // timer-driven highlight (works on every voice); boundary events refine it when supported
+    let t = 0;
+    for (let i = 0; i < sgs.length; i++) {
+      const len = (sgs[i].t || '').replace(/\s/g, '').length;
+      if (i > 0) {
+        const seg = i;
+        const at = t;
+        timersRef.current.push(setTimeout(function () {
+          if (!bdyRef.current) setActive(seg);
+        }, at));
+      }
+      t += Math.max(650, len * 175);
+    }
+    timersRef.current.push(setTimeout(function () {
+      if (!bdyRef.current) setActive(-1);
+    }, t + 500));
+    speak(p.jp, {
+      boundary: function (e) {
+        if (!bdyRef.current) {
+          bdyRef.current = true;
+          clearTimers();
+        }
+        const ci = e && e.charIndex || 0;
+        let a = 0;
+        for (let j = 0; j < sgs.length; j++) {
+          if (sgs[j].start <= ci) a = j;
+        }
+        setActive(a);
+      },
+      end: function () {
+        clearTimers();
+        setActive(-1);
+      }
+    });
   };
   const pick = (qi, opt) => {
     setPicked(prev => prev[qi] != null ? prev : Object.assign({}, prev, {
@@ -3875,7 +4138,7 @@ function Reading() {
   }, speechSupported && /*#__PURE__*/React.createElement("button", {
     className: "spk",
     "aria-label": "Listen to the passage",
-    onClick: () => speak(p.jp)
+    onClick: play
   }, "\uD83D\uDD0A"), /*#__PURE__*/React.createElement("button", {
     className: cx('swlink', showRo && 'on'),
     onClick: () => setShowRo(s => !s)
@@ -3888,13 +4151,18 @@ function Reading() {
       fontSize: '12px',
       margin: '0 0 12px'
     }
-  }, "Tap \uD83D\uDD0A to hear it \xB7 ", /*#__PURE__*/React.createElement("b", null, "Romaji"), " shows the pronunciation \xB7 ", /*#__PURE__*/React.createElement("b", null, "English"), " shows the meaning."), /*#__PURE__*/React.createElement("div", {
+  }, "Tap \uD83D\uDD0A to hear it \u2014 the line being read lights up \xB7 ", /*#__PURE__*/React.createElement("b", null, "Romaji"), " = pronunciation \xB7 ", /*#__PURE__*/React.createElement("b", null, "English"), " = meaning."), /*#__PURE__*/React.createElement("div", {
     className: "reading-card"
   }, /*#__PURE__*/React.createElement("div", {
     className: "rtitle"
   }, p.title), /*#__PURE__*/React.createElement("p", {
     className: "rjp"
-  }, p.jp), showRo && /*#__PURE__*/React.createElement("p", {
+  }, segs.map(function (s, i) {
+    return /*#__PURE__*/React.createElement("span", {
+      key: i,
+      className: cx('rseg', active === i && 'on')
+    }, s.t);
+  })), showRo && /*#__PURE__*/React.createElement("p", {
     className: "rro"
   }, p.romaji), showEn && /*#__PURE__*/React.createElement("p", {
     className: "ren"
@@ -4534,6 +4802,18 @@ function App({
       });
     } catch (e) {}
   }, [view]);
+  useEffect(() => {
+    if (!speechSupported) return;
+    const w = () => warmSpeech();
+    window.addEventListener('pointerdown', w, {
+      once: true
+    });
+    return () => {
+      try {
+        window.removeEventListener('pointerdown', w);
+      } catch (e) {}
+    };
+  }, []);
   if (!cp.loaded) return /*#__PURE__*/React.createElement(Splash, null);
   return /*#__PURE__*/React.createElement("div", {
     className: "app"
@@ -4552,7 +4832,7 @@ function App({
     setGoal: cp.setGoal,
     toggleDaily: cp.toggleDaily,
     setExamDate: cp.setExamDate
-  }), view === 'kana' && /*#__PURE__*/React.createElement(KanaView, null), view === 'kanji' && /*#__PURE__*/React.createElement(KanjiView, null), view === 'vocab' && /*#__PURE__*/React.createElement(VocabView, null), view === 'grammar' && /*#__PURE__*/React.createElement(GrammarView, null), view === 'practice' && /*#__PURE__*/React.createElement(Practice, {
+  }), view === 'kana' && /*#__PURE__*/React.createElement(KanaView, null), view === 'kanji' && /*#__PURE__*/React.createElement(KanjiView, null), view === 'vocab' && /*#__PURE__*/React.createElement(VocabView, null), view === 'grammar' && /*#__PURE__*/React.createElement(GrammarView, null), view === 'numbers' && /*#__PURE__*/React.createElement(NumbersView, null), view === 'practice' && /*#__PURE__*/React.createElement(Practice, {
     cp: cp,
     tool: route.sub || 'review',
     setTool: x => navigate('practice', x === 'review' ? '' : x)

@@ -434,6 +434,23 @@ section{scroll-margin-top:84px}
 .reading-card{background:linear-gradient(180deg,var(--bg-2),var(--bg-1));border:1px solid var(--line-2);border-radius:var(--r-lg);padding:clamp(20px,4vw,30px);box-shadow:var(--shadow);margin-bottom:20px}
 .reading-card .rtitle{font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--accent-2);margin-bottom:14px}
 .reading-card .rjp{font-family:var(--jp);font-size:clamp(17px,3vw,20px);line-height:2;white-space:pre-line}
+.rseg{border-radius:5px;transition:background .15s,color .15s}
+.rseg.on{background:var(--accent);color:#fff;box-shadow:0 0 0 2px var(--accent)}
+
+/* ---- numbers / time / counters ---- */
+.numgrid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr))}
+.numcell{aspect-ratio:auto;padding:14px 8px;gap:3px}
+.numcell .njp{font-family:var(--jp);font-size:21px;font-weight:500;color:#fff;line-height:1.1}
+.numcell .nk{font-family:var(--jp);font-size:13px;color:var(--accent-2)}
+.numcell .ne{font-size:11px;color:var(--muted)}
+.counters{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.ccard{background:var(--bg-1);border:1px solid var(--line);border-radius:var(--r);padding:15px 17px}
+.cc-top{display:flex;align-items:center;gap:9px}
+.cc-c{font-family:var(--jp);font-size:20px;font-weight:700}
+.cc-k{font-size:12px;color:var(--faint);font-weight:600}
+.cc-top .spk{margin-left:auto}
+.cc-use{font-size:13px;color:var(--muted);margin-top:5px}
+.cc-ex{font-family:var(--jp);font-size:14px;color:var(--accent-2);margin-top:8px;border-top:1px solid var(--line);padding-top:8px;line-height:1.7}
 .reading-card .rro{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--accent-2);font-size:14px;line-height:1.75;font-style:italic}
 .reading-card .ren{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:14px;line-height:1.7}
 .r-tools{display:flex;align-items:center;gap:12px}

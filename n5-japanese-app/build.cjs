@@ -31,7 +31,7 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "667102532272",
   appId: "1:667102532272:web:4ef887b4400045f0626175"
 };
-const data = ['kana','kanji','vocab','grammar','grammarq','reading'].map(n => read('src/data/'+n+'.js')).join('\n');
+const data = ['kana','kanji','vocab','grammar','grammarq','reading','numbers'].map(n => read('src/data/'+n+'.js')).join('\n');
 const appSrc = read('src/app.jsx');
 
 const appJs = Babel.transform(appSrc, { presets: ['react'], compact: false }).code;

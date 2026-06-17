@@ -10,7 +10,7 @@ function shuffle(arr){
 const cx = (...a)=>a.filter(Boolean).join(' ');
 
 /* ---------- hash routing ---------- */
-const VIEWS = ['home','kana','kanji','vocab','grammar','practice'];
+const VIEWS = ['home','kana','kanji','vocab','grammar','numbers','practice'];
 function parseHash(){
   let h=''; try{ h = window.location.hash || ''; }catch(e){}
   h = h.replace(/^#\/?/,'');
@@ -186,9 +186,20 @@ function _loadVoices(){ try{ const vs=window.speechSynthesis.getVoices()||[]; JA
 let speechSupported = false;
 try{ speechSupported = typeof window!=='undefined' && !!window.speechSynthesis; }catch(e){}
 if(speechSupported){ _loadVoices(); try{ window.speechSynthesis.onvoiceschanged=_loadVoices; }catch(e){} }
-function speak(text){
+let _warmed=false;
+function warmSpeech(){ if(_warmed||!speechSupported)return; _warmed=true; try{ const u=new SpeechSynthesisUtterance(' '); u.volume=0; window.speechSynthesis.speak(u); }catch(e){} }
+function speak(text, h){
   if(!speechSupported||!text) return;
-  try{ const u=new SpeechSynthesisUtterance(text); u.lang='ja-JP'; if(JA_VOICE)u.voice=JA_VOICE; u.rate=0.85; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }catch(e){}
+  try{
+    const synth=window.speechSynthesis;
+    if(synth.speaking||synth.pending) synth.cancel();   // only cancel when needed (less lag)
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='ja-JP'; if(JA_VOICE)u.voice=JA_VOICE; u.rate=0.85;
+    if(h&&h.boundary){ try{ u.onboundary=h.boundary; }catch(e){} }
+    if(h&&h.end){ try{ u.onend=h.end; u.onerror=h.end; }catch(e){} }
+    try{ synth.resume(); }catch(e){}   // Chrome sometimes auto-pauses the engine
+    synth.speak(u);
+  }catch(e){}
 }
 function SpeakBtn({text,label,lg}){
   if(!speechSupported) return null;
@@ -413,6 +424,7 @@ function Home({setView,name,prog,setGoal,toggleDaily,setExamDate}){
           <div className="ocard" onClick={()=>setView('kanji')} style={{cursor:'pointer'}}><div className="n">漢字</div><h3>Kanji</h3><p>Core N5 kanji with on/kun readings, meanings, and a spoken example.</p></div>
           <div className="ocard" onClick={()=>setView('vocab')} style={{cursor:'pointer'}}><div className="n">言葉</div><h3>Vocabulary</h3><p>Essential N5 words by theme — tap to hear each one.</p></div>
           <div className="ocard" onClick={()=>setView('grammar')} style={{cursor:'pointer'}}><div className="n">文法</div><h3>Grammar</h3><p>Every core N5 pattern with a spoken example sentence.</p></div>
+          <div className="ocard" onClick={()=>setView('numbers')} style={{cursor:'pointer'}}><div className="n">数字</div><h3>Numbers</h3><p>Telling time, counters, money, and tricky number readings.</p></div>
           <div className="ocard" onClick={()=>setView('practice')} style={{cursor:'pointer'}}><div className="n">練習</div><h3>Flashcards</h3><p>Flip-card drills. Shuffle, listen, and mark what you know.</p></div>
           <div className="ocard" onClick={()=>setView('practice')} style={{cursor:'pointer'}}><div className="n">試験</div><h3>Quizzes</h3><p>Multiple-choice quizzes that score you and save your best.</p></div>
           <div className="ocard" onClick={()=>setView('practice','mock')} style={{cursor:'pointer'}}><div className="n">模擬</div><h3>Mock Test</h3><p>A timed, scored mix of all five sections — see if you're ready.</p></div>
@@ -527,6 +539,44 @@ function GrammarView(){
   );
 }
 
+/* ---------- numbers, time & counters ---------- */
+function NumGrid({items}){
+  return (
+    <div className="kana-grid numgrid">
+      {items.map(function(x,i){ return (
+        <div className="kcell numcell" key={x.jp+i} onClick={()=>speak(x.k)} title="Tap to hear">
+          <SpeakBtn text={x.k} label={x.e}/>
+          <span className="njp">{x.jp}</span><span className="nk">{x.k}</span><span className="ne">{x.e}</span>
+        </div>
+      ); })}
+    </div>
+  );
+}
+function NumbersView(){
+  return (
+    <section className="block wrap">
+      <div className="shead"><div><div className="ey">Numbers · 数字</div><h2>Numbers, Time &amp; Counters</h2><p>Telling time, counting things, and the tricky sound-changes N5 loves to test. Tap any item to hear it.</p></div></div>
+      <div className="kana-sub">Telling time — 〜時 (o'clock)</div>
+      <NumGrid items={NUMBERS.hours}/>
+      <div className="kana-sub">Minutes — 〜分 &amp; 半 (half past)</div>
+      <NumGrid items={NUMBERS.minutes}/>
+      <div className="kana-sub">Big numbers &amp; sound changes</div>
+      <NumGrid items={NUMBERS.big}/>
+      <div className="kana-sub">Counters — how to count things</div>
+      <div className="counters">
+        {NUMBERS.counters.map(function(c,i){ return (
+          <div className="ccard" key={i}>
+            <div className="cc-top"><span className="cc-c">{c.c}</span><span className="cc-k">{c.k}</span><SpeakBtn text={c.say} label={c.use}/></div>
+            <div className="cc-use">{c.use}</div>
+            <div className="cc-ex">{c.ex}</div>
+          </div>
+        ); })}
+      </div>
+      <p className="muted center" style={{marginTop:24,fontSize:'13px'}}>午前 (ごぜん) = a.m. · 午後 (ごご) = p.m. · e.g. 午後三時半 = 3:30 p.m.</p>
+    </section>
+  );
+}
+
 /* ---------- flashcards ---------- */
 function buildDeck(id){
   if(id==='hira') return KANA_HIRA.map(x=>({front:x.k,back:x.r,tag:'Hiragana',fc:'jp',say:x.k}));
@@ -555,7 +605,7 @@ function Flashcards({cp}){
     <div className="study-wrap">
       <div className="chips" style={{justifyContent:'center',marginBottom:22}}>{DECKS.map(([id,l])=>(<span key={id} className={cx('chip',deckId===id&&'on')} onClick={()=>pickDeck(id)}>{l}</span>))}</div>
       <div className="fc-bar"><span className="fc-count">Card <b>{idx+1}</b> / {order.length}</span><span className="fc-count">Known <b>{knownCount}</b> / {order.length}</span></div>
-      <div className={cx('flashcard',flip&&'flipped')} onClick={()=>setFlip(f=>!f)}>
+      <div className={cx('flashcard',flip&&'flipped')} key={card.front} onClick={()=>setFlip(f=>!f)}>
         <div className="fc-inner">
           <div className="fc-face fc-front"><span className="tag">{card.tag}</span><span className={card.fc==='jp'?'q':'qs'}>{card.front}</span><span className="hint">tap to reveal</span></div>
           <div className="fc-face fc-back"><span className="tag">{card.tag}</span><span className="a">{card.back}</span>{card.sub&&<span className="sub">{card.sub}</span>}{card.sub2&&<span className="sub2">{card.sub2}</span>}<span className="hint">tap to flip back</span></div>
@@ -719,7 +769,7 @@ function Review({cp}){
         <React.Fragment>
           <div className="fc-bar"><span className="fc-count">Remaining <b>{queue.length}</b></span><span className="fc-count">New today <b>{newToday}</b>/{NEW_PER_DAY}　·　Reviewed today <b>{reviewedToday}</b></span></div>
           <div className="pbar" style={{marginBottom:16}}><i style={{width:((reviewed+queue.length)?Math.round(reviewed/(reviewed+queue.length)*100):0)+'%'}}/></div>
-          <div className={cx('flashcard',reveal&&'flipped')} onClick={()=>setReveal(r=>!r)}>
+          <div className={cx('flashcard',reveal&&'flipped')} key={card.front} onClick={()=>setReveal(r=>!r)}>
             <div className="fc-inner">
               <div className="fc-face fc-front"><span className="tag">{card.tag}{isNew?' · NEW':''}</span><span className={card.fc==='jp'?'q':'qs'}>{card.front}</span><span className="hint">tap to reveal</span></div>
               <div className="fc-face fc-back"><span className="tag">{card.tag}</span><span className="a">{card.back}</span>{card.sub&&<span className="sub">{card.sub}</span>}{card.sub2&&<span className="sub2">{card.sub2}</span>}{speechSupported&&<button className="spk lg" style={{marginTop:10}} aria-label="Listen" onClick={(e)=>{e.stopPropagation();speak(card.say);}}>🔊</button>}</div>
@@ -742,28 +792,56 @@ function Review({cp}){
 }
 
 /* ---------- reading ---------- */
+function splitSentences(text){
+  const out=[]; let buf='', start=0;
+  for(let i=0;i<text.length;i++){ const ch=text[i]; buf+=ch; if(ch==='。'||ch==='！'||ch==='？'||ch==='\n'){ out.push({t:buf,start:start}); start=i+1; buf=''; } }
+  if(buf) out.push({t:buf,start:start});
+  return out;
+}
 function Reading(){
   const [idx,setIdx] = useState(0);
   const [picked,setPicked] = useState({});
   const [showEn,setShowEn] = useState(false);
   const [showRo,setShowRo] = useState(false);
+  const [active,setActive] = useState(-1);
   const p = READING[idx];
-  const go=(d)=>{ setIdx(i=>{ const n=i+d; if(n<0)return READING.length-1; if(n>=READING.length)return 0; return n; }); setPicked({}); setShowEn(false); setShowRo(false); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} };
+  const segs = useMemo(()=>splitSentences(p.jp),[idx,p.jp]);
+  const timersRef = useRef([]); const bdyRef = useRef(false);
+  const clearTimers=()=>{ timersRef.current.forEach(function(t){clearTimeout(t);}); timersRef.current=[]; };
+  const stopAudio=()=>{ clearTimers(); try{window.speechSynthesis.cancel();}catch(e){} };
+  useEffect(()=>()=>stopAudio(),[]);
+  const go=(d)=>{ stopAudio(); setIdx(i=>{ const n=i+d; if(n<0)return READING.length-1; if(n>=READING.length)return 0; return n; }); setPicked({}); setShowEn(false); setShowRo(false); setActive(-1); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} };
+  const play=()=>{
+    clearTimers(); bdyRef.current=false;
+    const sgs=segs; setActive(0);
+    // timer-driven highlight (works on every voice); boundary events refine it when supported
+    let t=0;
+    for(let i=0;i<sgs.length;i++){
+      const len=(sgs[i].t||'').replace(/\s/g,'').length;
+      if(i>0){ const seg=i; const at=t; timersRef.current.push(setTimeout(function(){ if(!bdyRef.current) setActive(seg); },at)); }
+      t += Math.max(650, len*175);
+    }
+    timersRef.current.push(setTimeout(function(){ if(!bdyRef.current) setActive(-1); }, t+500));
+    speak(p.jp, {
+      boundary:function(e){ if(!bdyRef.current){ bdyRef.current=true; clearTimers(); } const ci=(e&&e.charIndex)||0; let a=0; for(let j=0;j<sgs.length;j++){ if(sgs[j].start<=ci)a=j; } setActive(a); },
+      end:function(){ clearTimers(); setActive(-1); }
+    });
+  };
   const pick=(qi,opt)=>{ setPicked(prev=> prev[qi]!=null ? prev : Object.assign({},prev,{[qi]:opt})); };
   return (
     <div className="quiz-wrap" style={{maxWidth:'640px'}}>
       <div className="fc-bar">
         <span className="fc-count">Passage <b>{idx+1}</b> / {READING.length}</span>
         <span className="r-tools">
-          {speechSupported && <button className="spk" aria-label="Listen to the passage" onClick={()=>speak(p.jp)}>🔊</button>}
+          {speechSupported && <button className="spk" aria-label="Listen to the passage" onClick={play}>🔊</button>}
           <button className={cx('swlink',showRo&&'on')} onClick={()=>setShowRo(s=>!s)}>Romaji</button>
           <button className={cx('swlink',showEn&&'on')} onClick={()=>setShowEn(s=>!s)}>English</button>
         </span>
       </div>
-      <div className="muted" style={{fontSize:'12px',margin:'0 0 12px'}}>Tap 🔊 to hear it · <b>Romaji</b> shows the pronunciation · <b>English</b> shows the meaning.</div>
+      <div className="muted" style={{fontSize:'12px',margin:'0 0 12px'}}>Tap 🔊 to hear it — the line being read lights up · <b>Romaji</b> = pronunciation · <b>English</b> = meaning.</div>
       <div className="reading-card">
         <div className="rtitle">{p.title}</div>
-        <p className="rjp">{p.jp}</p>
+        <p className="rjp">{segs.map(function(s,i){ return <span key={i} className={cx('rseg',active===i&&'on')}>{s.t}</span>; })}</p>
         {showRo && <p className="rro">{p.romaji}</p>}
         {showEn && <p className="ren">{p.en}</p>}
       </div>
@@ -1038,6 +1116,7 @@ function App({user,onSignOut}){
   const view = route.view;
   const cp = useCloudProgress(user.uid);
   useEffect(()=>{ try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} },[view]);
+  useEffect(()=>{ if(!speechSupported)return; const w=()=>warmSpeech(); window.addEventListener('pointerdown',w,{once:true}); return ()=>{ try{window.removeEventListener('pointerdown',w);}catch(e){} }; },[]);
   if(!cp.loaded) return <Splash/>;
   return (
     <div className="app">
@@ -1048,6 +1127,7 @@ function App({user,onSignOut}){
         {view==='kanji' && <KanjiView/>}
         {view==='vocab' && <VocabView/>}
         {view==='grammar' && <GrammarView/>}
+        {view==='numbers' && <NumbersView/>}
         {view==='practice' && <Practice cp={cp} tool={route.sub||'review'} setTool={(x)=>navigate('practice', x==='review'?'':x)}/>}
       </main>
       <footer className="foot"><div className="jp">頑張って！</div><div style={{marginTop:6}}>Built for JLPT N5 learners · Read, listen, then recall.</div></footer>

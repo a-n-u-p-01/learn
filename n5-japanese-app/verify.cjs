@@ -19,7 +19,7 @@ vm.runInContext(read('vendor/babel.min.js'), ctx);                              
 let appJs = ctx.Babel.transform(read('src/app.jsx'), { presets: ['react'], compact: false }).code;
 appJs = appJs.replace(/ReactDOM\.createRoot[\s\S]*$/, '// mount stripped');
 
-const data = ['kana','kanji','vocab','grammar','grammarq','reading'].map(n => read('src/data/'+n+'.js')).join('\n');
+const data = ['kana','kanji','vocab','grammar','grammarq','reading','numbers'].map(n => read('src/data/'+n+'.js')).join('\n');
 
 const harness = `
 var __out=[]; var __ok=true;
@@ -41,6 +41,8 @@ __t('KanaView', React.createElement(KanaView));
 __t('KanjiView', React.createElement(KanjiView));
 __t('VocabView', React.createElement(VocabView));
 __t('GrammarView', React.createElement(GrammarView));
+__t('NumbersView', React.createElement(NumbersView));
+(function(){ var nOk = NUMBERS.hours.length===12 && NUMBERS.minutes.some(function(m){return m.jp==='半';}) && NUMBERS.counters.every(function(c){return c.c&&c.use&&c.ex&&c.say;}) && NUMBERS.hours.every(function(h){return h.jp&&h.k&&h.e;}); if(!nOk)__ok=false; __out.push('NUMBERS: hours='+NUMBERS.hours.length+' minutes='+NUMBERS.minutes.length+' big='+NUMBERS.big.length+' counters='+NUMBERS.counters.length+' valid='+nOk); })();
 __t('Practice/Flashcards', React.createElement(Practice,{cp:__cp,tool:'cards',setTool:function(){}}));
 __t('Practice/Quiz route', React.createElement(Practice,{cp:__cp,tool:'quiz',setTool:function(){}}));
 __t('Quiz', React.createElement(Quiz,{cp:__cp}));
