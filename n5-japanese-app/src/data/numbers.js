@@ -53,3 +53,5 @@ var NUMBERS = {
     {c:'〜番',k:'-ban',use:'order / number',ex:'いちばん・にばん・さんばん',say:'いちばん、にばん、さんばん'}
   ]
 };
+
+export { NUMBERS };

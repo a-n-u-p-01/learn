@@ -79,3 +79,5 @@ var READING = [
     ]
   }
 ];
+
+export { READING };

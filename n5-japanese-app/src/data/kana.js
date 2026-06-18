@@ -69,3 +69,5 @@ var KANA = {
     ]
   }
 };
+
+export { KANA };

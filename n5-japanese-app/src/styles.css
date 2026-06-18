@@ -103,6 +103,13 @@ section{scroll-margin-top:84px}
 .divider{height:1px;background:var(--line);margin:0}
 .block{padding-top:clamp(54px,8vw,96px);padding-bottom:clamp(54px,8vw,96px)}
 
+/* "practice this" call-to-action on reference pages */
+.prac-cta{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  margin:0 0 26px;padding:13px 18px;border:1px solid var(--line);border-radius:14px;
+  background:linear-gradient(120deg,var(--accent-dim),var(--bg-1))}
+.prac-cta span{font-size:14px;font-weight:600;color:var(--fg);max-width:540px;line-height:1.5}
+.prac-cta .btn{flex:0 0 auto}
+
 /* chips / segmented */
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:500;cursor:pointer;
@@ -260,8 +267,9 @@ section{scroll-margin-top:84px}
 .spk:active{transform:scale(.9)}
 .spk.lg{width:44px;height:44px;font-size:18px;border-radius:12px}
 .kcell{position:relative}
-.kcell .spk{position:absolute;top:5px;right:5px;width:22px;height:22px;font-size:10px;opacity:0;border-radius:7px}
-.kcell:hover .spk{opacity:.85}
+.kcell .spk{position:absolute;top:5px;right:5px;width:22px;height:22px;font-size:10px;opacity:.5;border-radius:7px}
+.kcell:hover .spk{opacity:1}
+@media (hover:none){ .kcell .spk{opacity:.7} }
 .kj .mean-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .vrow .en-wrap{display:flex;align-items:center;gap:10px;justify-content:space-between}
 .gex{position:relative}

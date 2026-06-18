@@ -1,20 +1,21 @@
 {
-  "name": "n5-learn",
+  "name": "n5-nihongo",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "description": "JLPT N5 study app — kana, kanji, vocabulary, grammar, flashcards, SRS review, quizzes and a mock exam, with audio and Firebase cloud sync.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "firebase": "^10.14.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11",
-    "vite-plugin-singlefile": "^2.0.3"
+    "vite": "^5.4.11"
   }
 }

@@ -1,4 +1,4 @@
-// JLPT N5 grammar & particle cloze questions. ＿ = blank. a = correct (must be in opts)
+// (data file) JLPT N5 grammar & particle cloze questions. ＿ = blank. a = correct (must be in opts)
 var GRAMMARQ = [
   {q:'わたし＿ がくせいです。',opts:['は','が','を','に'],a:'は',hint:'topic marker は'},
   {q:'本＿ よみます。',opts:['を','に','が','で'],a:'を',hint:'direct object を'},
@@ -41,5 +41,13 @@ var GRAMMARQ = [
   {q:'この みせは やすい＿、よく かいます。',opts:['から','が','より','まで'],a:'から',hint:'because から'},
   {q:'がくせいが さん＿ います。',opts:['にん','こ','ほん','まい'],a:'にん',hint:'counter for people 人'},
   {q:'りんごを ひと＿ かいます。',opts:['つ','り','こ','だい'],a:'つ',hint:'general counter ～つ'},
-  {q:'さむく ＿ ました。',opts:['なり','して','いき','あり'],a:'なり',hint:'～くなる (become)'}
+  {q:'さむく ＿ ました。',opts:['なり','して','いき','あり'],a:'なり',hint:'～くなる (become)'},
+  {q:'バスより でんしゃの＿ はやいです。',opts:['ほうが','より','から','まで'],a:'ほうが',hint:'AよりBのほうが (comparison)'},
+  {q:'あした あめ ＿。',opts:['でしょう','でした','ました','ません'],a:'でしょう',hint:'probably ～でしょう'},
+  {q:'にほんごを はなす ＿ できます。',opts:['ことが','のが','ことを','のを'],a:'ことが',hint:'～ことができる (can)'},
+  {q:'＿ たべますか。',opts:['なにか','なにを','なにが','なにも'],a:'なにか',hint:'question word + か (something)'},
+  {q:'たかいです。＿、かいます。',opts:['でも','そして','から','まで'],a:'でも',hint:'でも (but)'},
+  {q:'しゅくだいを します。＿、ねます。',opts:['それから','でも','より','しか'],a:'それから',hint:'それから (after that)'}
 ];
+
+export { GRAMMARQ };

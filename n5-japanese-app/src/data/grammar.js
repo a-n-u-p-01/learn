@@ -163,5 +163,31 @@ var GRAMMAR = [
   {point:'～前に / ～後で',meaning:'before / after',explain:'Verb(dictionary)+前に = before doing; Verb(past た)+後で = after doing.',ex:[
     {jp:'寝る前に歯を磨きます。',romaji:'Neru mae ni ha o migakimasu.',en:'I brush my teeth before sleeping.'},
     {jp:'食べた後で、散歩します。',romaji:'Tabeta ato de, sanpo shimasu.',en:'After eating, I take a walk.'},
-    {jp:'仕事の後で、映画を見ます。',romaji:'Shigoto no ato de, eiga o mimasu.',en:'After work, I watch a movie.'}]}
+    {jp:'仕事の後で、映画を見ます。',romaji:'Shigoto no ato de, eiga o mimasu.',en:'After work, I watch a movie.'}]},
+  {point:'～のほうが',meaning:'A is more ~ (comparison)',explain:'Says which of two is more: AよりBのほうが～ = "B is more ~ than A".',ex:[
+    {jp:'電車のほうが速いです。',romaji:'Densha no hou ga hayai desu.',en:'The train is faster.'},
+    {jp:'夏より冬のほうが好きです。',romaji:'Natsu yori fuyu no hou ga suki desu.',en:'I like winter more than summer.'},
+    {jp:'こっちのほうが安いです。',romaji:'Kotchi no hou ga yasui desu.',en:'This one is cheaper.'}]},
+  {point:'～でしょう',meaning:'probably; …right?',explain:'Shows likelihood ("probably"), or seeks agreement ("…right?"). Plain form + でしょう.',ex:[
+    {jp:'あした雨でしょう。',romaji:'Ashita ame deshou.',en:'It will probably rain tomorrow.'},
+    {jp:'たぶん来るでしょう。',romaji:'Tabun kuru deshou.',en:'He will probably come.'},
+    {jp:'おいしいでしょう？',romaji:'Oishii deshou?',en:'It is delicious, right?'}]},
+  {point:'そして / それから',meaning:'and; and then',explain:'Joins sentences: そして = "and (also)"; それから = "after that / and then".',ex:[
+    {jp:'朝ごはんを食べました。そして、学校へ行きました。',romaji:'Asagohan o tabemashita. Soshite, gakkou e ikimashita.',en:'I ate breakfast. And then I went to school.'},
+    {jp:'宿題をします。それから、寝ます。',romaji:'Shukudai o shimasu. Sorekara, nemasu.',en:'I will do homework. After that, I will sleep.'},
+    {jp:'安くて、そしておいしいです。',romaji:'Yasukute, soshite oishii desu.',en:'It is cheap, and also delicious.'}]},
+  {point:'でも',meaning:'but, however',explain:'Begins a sentence to contrast with the one before. でも is casual; しかし is more formal.',ex:[
+    {jp:'高いです。でも、買います。',romaji:'Takai desu. Demo, kaimasu.',en:'It is expensive. But I will buy it.'},
+    {jp:'行きたいです。でも、時間がありません。',romaji:'Ikitai desu. Demo, jikan ga arimasen.',en:'I want to go. But I have no time.'},
+    {jp:'寒いです。でも、元気です。',romaji:'Samui desu. Demo, genki desu.',en:'It is cold. But I am fine.'}]},
+  {point:'～ことができる',meaning:'can, be able to',explain:'Dictionary-form verb + ことができます = "can do ~" — a polite way to state ability.',ex:[
+    {jp:'日本語を話すことができます。',romaji:'Nihongo o hanasu koto ga dekimasu.',en:'I can speak Japanese.'},
+    {jp:'ここで写真を撮ることができます。',romaji:'Koko de shashin o toru koto ga dekimasu.',en:'You can take photos here.'},
+    {jp:'泳ぐことができますか。',romaji:'Oyogu koto ga dekimasu ka.',en:'Can you swim?'}]},
+  {point:'何か・誰か・どこか',meaning:'something / someone / somewhere',explain:'Question word + か makes an indefinite: 何か (something), 誰か (someone), どこか (somewhere).',ex:[
+    {jp:'何か食べますか。',romaji:'Nanika tabemasu ka.',en:'Will you eat something?'},
+    {jp:'誰か来ました。',romaji:'Dareka kimashita.',en:'Someone came.'},
+    {jp:'どこか行きたいです。',romaji:'Dokoka ikitai desu.',en:'I want to go somewhere.'}]}
 ];
+
+export { GRAMMAR };

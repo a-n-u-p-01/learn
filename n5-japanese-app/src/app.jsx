@@ -1,5 +1,11 @@
-/* global React, ReactDOM, firebase, KANA, KANJI, VOCAB, GRAMMAR */
-const { useState, useEffect, useMemo, useRef, useCallback } = React;
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { KANA } from './data/kana.js';
+import { KANJI } from './data/kanji.js';
+import { VOCAB } from './data/vocab.js';
+import { GRAMMAR } from './data/grammar.js';
+import { GRAMMARQ } from './data/grammarq.js';
+import { READING } from './data/reading.js';
+import { NUMBERS } from './data/numbers.js';
 
 /* ---------- helpers ---------- */
 function shuffle(arr){
@@ -16,7 +22,7 @@ function parseHash(){
   h = h.replace(/^#\/?/,'');
   const parts = h.split('/').filter(Boolean);
   const view = VIEWS.indexOf(parts[0])>=0 ? parts[0] : 'home';
-  return { view, sub: parts[1]||'' };
+  return { view, sub: parts[1]||'', sub2: parts[2]||'' };
 }
 function useHashRoute(){
   const [route,setRoute] = useState(parseHash);
@@ -25,32 +31,40 @@ function useHashRoute(){
     try{ window.addEventListener('hashchange',on); }catch(e){}
     return ()=>{ try{ window.removeEventListener('hashchange',on); }catch(e){} };
   },[]);
-  const navigate = useCallback((view,sub)=>{
-    const target = '#/'+view+(sub?('/'+sub):'');
+  const navigate = useCallback((view,sub,sub2)=>{
+    const target = '#/'+view+(sub?('/'+sub):'')+(sub&&sub2?('/'+sub2):'');
     try{ if(window.location.hash!==target) window.location.hash=target; else setRoute(parseHash()); }
-    catch(e){ setRoute({view, sub:sub||''}); }
+    catch(e){ setRoute({view, sub:sub||'', sub2:sub2||''}); }
   },[]);
   return [route, navigate];
 }
 
-/* ---------- cloud (Firebase compat) ---------- */
-const cloud = { ok:false, auth:null, db:null };
-function cloudInit(){
-  try{
-    const cfg = (typeof window!=='undefined' && window.FIREBASE_CONFIG) ? window.FIREBASE_CONFIG : null;
-    if(typeof firebase==='undefined' || !cfg || !cfg.apiKey) return;
-    if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(cfg);
-    cloud.auth = firebase.auth();
-    cloud.db = firebase.firestore();
-    cloud.ok = true;
-  }catch(e){ cloud.ok=false; }
-}
-cloudInit();
-function cloudLoad(uid){ return cloud.db.collection('progress').doc(uid).get().then(s=> s.exists ? (s.data().data||null) : null ); }
-function cloudSave(uid, data){
-  try{ return cloud.db.collection('progress').doc(uid).set({ data, updatedAt: new Date().toISOString() }, { merge:true }).catch(function(){}); }
-  catch(e){ return Promise.resolve(); }
-}
+/* ===== CLOUD:MODULAR — modular Firebase SDK (Vite build) ===== */
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { FIREBASE_CONFIG } from './firebase-config.js';
+const cloud = {
+  ok:false, auth:null, db:null,
+  init(){
+    try{
+      if(!FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey) return;
+      const app = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
+      this.auth = getAuth(app);
+      this.db = getFirestore(app);
+      this.ok = true;
+    }catch(e){ this.ok=false; }
+  },
+  ready(){ return true; },
+  onAuth(cb){ return onAuthStateChanged(this.auth, cb); },
+  signIn(email,pass){ return signInWithEmailAndPassword(this.auth, email, pass); },
+  signUp(email,pass){ return createUserWithEmailAndPassword(this.auth, email, pass); },
+  signOut(){ try{ return fbSignOut(this.auth); }catch(e){} },
+  load(uid){ return getDoc(doc(this.db,'progress',uid)).then(function(s){ return s.exists() ? (s.data().data||null) : null; }); },
+  save(uid, data){ try{ return setDoc(doc(this.db,'progress',uid), { data, updatedAt:new Date().toISOString() }, { merge:true }).catch(function(){}); }catch(e){ return Promise.resolve(); } },
+  subscribe(uid, cb){ return onSnapshot(doc(this.db,'progress',uid), function(snap){ if(snap.metadata && snap.metadata.hasPendingWrites) return; cb(snap.exists() ? (snap.data().data||null) : null); }, function(){}); }
+};
+/* ===== /CLOUD ===== */
 
 /* ---------- progress (cloud only — Firestore is the single source of truth) ---------- */
 function mergeProg(a,b){
@@ -75,6 +89,8 @@ function mergeProg(a,b){
 /* ---------- spaced repetition (SM-2 lite) ---------- */
 const DAY_MS = 86400000;
 const NEW_PER_DAY = 20;
+const REVIEW_BUFFER_DAYS = 10; // pure-review run-up before the exam (new material finishes by exam − this)
+const MIN_NEW_PER_DAY = 10;    // never schedule a slower pace than this — a far-off date means you finish early, not crawl
 function srsUpdate(s, grade){
   let ease=s?s.ease:2.5, interval=s?s.interval:0, reps=s?s.reps:0, lapses=s?s.lapses:0;
   if(grade==='again'){ return {ease:Math.max(1.3,ease-0.2), interval:0, reps:0, lapses:lapses+1, due:Date.now()+60000}; }
@@ -100,6 +116,13 @@ function buildQueue(cards, srsDeck, today){
 function dueCount(srs){ const now=Date.now(); let n=0; const s=srs||{}; for(const d in s){ for(const f in s[d]){ if(s[d][f].due<=now)n++; } } return n; }
 function remainingNewInDeck(srs, deckId){ const s=(srs||{})[deckId]||{}; const fronts=buildDeck(deckId).map(function(c){return c.front;}); let n=0; for(let i=0;i<fronts.length;i++){ if(!s[fronts[i]])n++; } return n; }
 function daysBetween(a,b){ const pa=a.split('-').map(Number), pb=b.split('-').map(Number); return Math.round((new Date(pb[0],pb[1]-1,pb[2]) - new Date(pa[0],pa[1]-1,pa[2]))/86400000); }
+// ---- daily-plan math (across all decks) ----
+function totalRemainingNew(srs){ let n=0; for(let i=0;i<DECKS.length;i++){ n+=remainingNewInDeck(srs,DECKS[i][0]); } return n; }
+function newDoneTodayAll(srs, today){ let n=0; const s=srs||{}; for(let i=0;i<DECKS.length;i++){ n+=newIntroducedToday(s[DECKS[i][0]]||{}, today); } return n; }
+// fastest you can introduce every remaining card: each deck is capped at NEW_PER_DAY/day,
+// so the floor is the largest single deck (decks can be studied in parallel).
+function maxDeckDays(srs){ let m=0; for(let i=0;i<DECKS.length;i++){ m=Math.max(m, Math.ceil(remainingNewInDeck(srs,DECKS[i][0])/NEW_PER_DAY)); } return m; }
+function fmtYmd(s){ if(!s) return ''; const p=s.split('-').map(Number); return p[2]+' '+MONTHS[p[1]-1]+' '+p[0]; } // "12 Jun 2026"
 
 /* ---------- daily streak & goal ---------- */
 function dayStr(d){ d=d||new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -121,7 +144,7 @@ function useCloudProgress(uid){
   const loadedRef = useRef(false);
   useEffect(()=>{ progRef.current = prog; },[prog]);
   useEffect(()=>{ loadedRef.current = loaded; },[loaded]);
-  const queueSave = (next)=>{ if(!cloud.ok) return; setSyncState('saving'); clearTimeout(timer.current); timer.current=setTimeout(()=>{ cloudSave(uid,next).then(()=>setSyncState('saved')); },500); };
+  const queueSave = (next)=>{ if(!cloud.ok) return; setSyncState('saving'); clearTimeout(timer.current); timer.current=setTimeout(()=>{ cloud.save(uid,next).then(()=>setSyncState('saved')); },500); };
   const commit = useCallback((updater)=>{
     setProg(prev=>{ const next = typeof updater==='function'?updater(prev):updater; queueSave(next); return next; });
   },[uid]);
@@ -129,20 +152,16 @@ function useCloudProgress(uid){
   useEffect(()=>{
     if(!cloud.ok){ setLoaded(true); return; }
     let alive=true, unsub=null;
-    cloudLoad(uid).then(d=>{ if(!alive)return; if(d) setProg(prev=>mergeProg(prev,d)); setLoaded(true); }).catch(()=>{ if(alive) setLoaded(true); });
+    cloud.load(uid).then(d=>{ if(!alive)return; if(d) setProg(prev=>mergeProg(prev,d)); setLoaded(true); }).catch(()=>{ if(alive) setLoaded(true); });
     try{
-      unsub = cloud.db.collection('progress').doc(uid).onSnapshot(snap=>{
-        if(snap.metadata && snap.metadata.hasPendingWrites) return; // ignore our own in-flight writes
-        const d = snap.exists ? (snap.data().data||null) : null;
-        if(alive && d) setProg(prev=>mergeProg(prev,d));
-      }, ()=>{});
+      unsub = cloud.subscribe(uid, function(d){ if(alive && d) setProg(prev=>mergeProg(prev,d)); });
     }catch(e){}
     return ()=>{ alive=false; if(unsub){ try{unsub();}catch(e){} } };
   },[uid]);
   // flush latest to the cloud when the tab is hidden/closed (never before first load)
   useEffect(()=>{
     if(!cloud.ok) return;
-    const flush=()=>{ if(!loadedRef.current) return; clearTimeout(timer.current); try{ cloudSave(uid, progRef.current); }catch(e){} };
+    const flush=()=>{ if(!loadedRef.current) return; clearTimeout(timer.current); try{ cloud.save(uid, progRef.current); }catch(e){} };
     const onVis=()=>{ try{ if(document.visibilityState==='hidden') flush(); }catch(e){} };
     try{ document.addEventListener('visibilitychange',onVis); window.addEventListener('pagehide',flush); }catch(e){}
     return ()=>{ try{ document.removeEventListener('visibilitychange',onVis); window.removeEventListener('pagehide',flush); }catch(e){} };
@@ -209,7 +228,7 @@ function SpeakBtn({text,label,lg}){
 /* ---------- counts ---------- */
 const KANA_HIRA = [...KANA.hiragana.base,...KANA.hiragana.dakuten,...KANA.hiragana.yoon];
 const KANA_KATA = [...KANA.katakana.base,...KANA.katakana.dakuten,...KANA.katakana.yoon];
-const TOTAL_CARDS = KANA_HIRA.length + KANA_KATA.length + KANJI.length + VOCAB.length;
+const TOTAL_CARDS = KANA_HIRA.length + KANA_KATA.length + KANJI.length + VOCAB.length + GRAMMAR.length;
 function exWord(ex){ return (ex||'').split(' (')[0]; }
 
 /* ---------- nav ---------- */
@@ -326,22 +345,44 @@ function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
   const today=dayStr();
   const daily=(prog.daily||{})[today]||{};
   const due=dueCount(srs);
-  const rem={}; let totalRem=0, maxDays=0, focus=null;
-  DECKS.forEach(function(d){ const r=remainingNewInDeck(srs,d[0]); rem[d[0]]=r; totalRem+=r; maxDays=Math.max(maxDays,Math.ceil(r/NEW_PER_DAY)); if(!focus&&r>0)focus=d; });
-  const focusDone = focus ? newIntroducedToday(srs[focus[0]]||{}, today) : 0;
-  const focusTarget = focus ? Math.min(rem[focus[0]], NEW_PER_DAY) : 0;
+  const exam=prog.examDate||'';
+  const totalRemNew=totalRemainingNew(srs);            // cards still to introduce (all decks)
+  const newDone=newDoneTodayAll(srs, today);           // new cards introduced today (all decks)
+  const baseRem=totalRemNew+newDone;                   // remaining as of the start of today (keeps target stable through the day)
+  const mDays=maxDeckDays(srs);                         // fastest possible at NEW_PER_DAY/deck
+  const focus=DECKS.find(function(d){ return remainingNewInDeck(srs,d[0])>0; }) || null;
+  // adaptive daily NEW target: finish introducing in the first ~75% of the time to the exam,
+  // leaving the rest to review. With no exam, hold a gentle steady pace.
+  let dToExam=null, introduceDays=null, targetNew=0, feasible=true;
+  if(baseRem>0){
+    if(exam){
+      dToExam=daysBetween(today,exam);
+      // finish introducing new cards by (exam − REVIEW_BUFFER), leaving a fixed review run-up.
+      // dividing remaining by the (shrinking) days-until-that-deadline finishes exactly on time,
+      // but never go below a comfortable floor — a far date just means you finish early.
+      introduceDays=Math.max((dToExam>0?dToExam:0)-REVIEW_BUFFER_DAYS,1);
+      targetNew=Math.min(baseRem, Math.max(MIN_NEW_PER_DAY, Math.ceil(baseRem/introduceDays)));
+      feasible = dToExam>0 && mDays<=introduceDays;     // per-deck cap must allow finishing in time
+    } else {
+      targetNew=Math.min(NEW_PER_DAY, baseRem);
+    }
+  }
+  const newTaskDone = totalRemNew===0 || newDone>=targetNew;
+  const finishInDays = targetNew>0 ? Math.ceil(baseRem/targetNew) : 0;     // days to learn everything at this pace
+  const noExamDays = finishInDays;
+  const learnByDate = addDays(today, finishInDays);                        // the date you'll have learned all new cards
+  const slack = (exam && dToExam!=null) ? (dToExam - finishInDays) : 0;    // review days between finishing and the exam
+  const minDate = exam ? addDays(today, mDays + REVIEW_BUFFER_DAYS) : '';  // earliest date N5 is achievable from here
   const tasks=[
     {k:'rev', label: due>0?('Clear '+due+' due review'+(due===1?'':'s')):'Reviews — all clear', done: due===0, go:'practice'},
-    focus ? {k:'new', label:'Learn '+focusTarget+' new '+focus[1]+' · '+focusDone+'/'+focusTarget, done: focusDone>=focusTarget, go:'practice'}
-          : {k:'new', label:'All cards introduced — review only', done:true, go:'practice'},
+    totalRemNew===0
+      ? {k:'new', label:'All cards introduced — review only', done:true, go:'practice'}
+      : {k:'new', label:'Learn '+targetNew+' new card'+(targetNew===1?'':'s')+(focus?(' · start with '+focus[1]):'')+' · '+Math.min(newDone,targetNew)+'/'+targetNew, done:newTaskDone, go:'practice'},
     {k:'quiz', label:'Do one quiz', done:!!daily.quiz, toggle:true, go:'practice', gsub:'quiz'},
     {k:'read', label:'One reading or listening', done:!!daily.read, toggle:true, go:'practice', gsub:'reading'}
   ];
   const doneN=tasks.filter(function(t){return t.done;}).length;
   const allDone=doneN===tasks.length;
-  const exam=prog.examDate||'';
-  let dToExam=null, onTrack=null;
-  if(exam){ dToExam=daysBetween(today,exam); onTrack = maxDays <= Math.max(dToExam-7,0); }
   return (
     <div className="today">
       <div className="today-h">
@@ -359,13 +400,19 @@ function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
       </div>
       <div className="pace">
         {allDone
-          ? <span className="pace-ok">✓ Today's plan complete — you're on pace. See you tomorrow!</span>
-          : (exam
-              ? <span>JLPT in <b>{dToExam}</b> day{dToExam===1?'':'s'} · {totalRem>0?('~'+maxDays+' days of new material left'):'all material learned'} · <b className={onTrack?'ontrack':'behind'}>{onTrack?'on track ✓':'pick up the pace ⚠'}</b></span>
-              : <span>{totalRem>0?('At ~'+NEW_PER_DAY+'/day, you\'ll have seen everything in about '+maxDays+' days.'):'You\'ve introduced all the material — keep reviewing!'}</span>)
+          ? <span className="pace-ok">✓ Today's plan done — you're on pace. Come back tomorrow! 🎉</span>
+          : (totalRemNew===0
+              ? <span>🎉 You've learned all {TOTAL_CARDS} cards — keep clearing reviews to lock them in.</span>
+              : (exam
+                  ? (feasible
+                      ? (slack>=30
+                          ? <span><b className="ontrack">✓ On track — ahead of schedule.</b> Do today's plan daily at <b>{targetNew} new/day</b> and you'll have learned all of N5 by <b>{fmtYmd(learnByDate)}</b>, well before your exam on {fmtYmd(exam)} — then keep reviewing to stay sharp.</span>
+                          : <span><b className="ontrack">✓ On track for {fmtYmd(exam)}.</b> Finish today's plan every day (<b>{targetNew} new/day</b>) and you'll know all of N5 by <b>{fmtYmd(learnByDate)}</b>, leaving <b>{slack}</b> day{slack===1?'':'s'} to review before the exam.</span>)
+                      : <span><b className="behind">⚠ That date is too soon.</b> From today, N5 needs about <b>{mDays+REVIEW_BUFFER_DAYS} days</b> (you can learn at most {NEW_PER_DAY} new per deck a day). Pick an exam date on or after <b>{fmtYmd(minDate)}</b>.</span>)
+                  : <span>At <b>{targetNew} new cards/day</b> you'll learn the remaining <b>{totalRemNew}</b> in about <b>{noExamDays} days</b>. Set a target exam date below for a plan built around it.</span>))
         }
         <div className="examrow">
-          <label>Target exam date</label>
+          <label>Target exam date{exam&&dToExam!=null?(dToExam>0?(' · '+dToExam+' days to go'):' · today'):''}</label>
           <input type="date" className="dateinp" value={exam} onChange={function(e){ setExamDate(e.target.value); }}/>
           {exam && <button className="swlink" onClick={function(){ setExamDate(''); }}>clear</button>}
         </div>
@@ -382,6 +429,7 @@ function Home({setView,name,prog,setGoal,toggleDaily,setExamDate}){
     ['Kana', (Object.keys(known.hira||{}).length+Object.keys(known.kata||{}).length), KANA_HIRA.length+KANA_KATA.length],
     ['Kanji', Object.keys(known.kanji||{}).length, KANJI.length],
     ['Vocabulary', Object.keys(known.vocab||{}).length, VOCAB.length],
+    ['Grammar', Object.keys(known.grammar||{}).length, GRAMMAR.length],
   ];
   const stats = [
     [String(KANA_HIRA.length+KANA_KATA.length),'kana characters'],
@@ -449,7 +497,7 @@ function KanaGrid({list}){
     </div>
   );
 }
-function KanaView(){
+function KanaView({nav}){
   const [sys,setSys] = useState('hiragana');
   const set = KANA[sys];
   return (
@@ -461,6 +509,7 @@ function KanaView(){
           <button className={cx(sys==='katakana'&&'on')} onClick={()=>setSys('katakana')}>カタカナ Katakana</button>
         </div>
       </div>
+      {nav && <div className="prac-cta"><span>Learned these? Lock them in.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','kana')}>✦ Practice kana →</button></div>}
       <div className="kana-sub">Basic — gojūon</div><KanaGrid list={set.base}/>
       <div className="kana-sub">Dakuten &amp; Handakuten — voiced sounds</div><KanaGrid list={set.dakuten}/>
       <div className="kana-sub">Yōon — combination sounds</div><KanaGrid list={set.yoon}/>
@@ -469,7 +518,7 @@ function KanaView(){
 }
 
 /* ---------- kanji ---------- */
-function KanjiView(){
+function KanjiView({nav}){
   const [q,setQ] = useState('');
   const list = useMemo(()=>{ const s=q.trim().toLowerCase(); if(!s)return KANJI;
     return KANJI.filter(k=> k.c.includes(s)||k.mean.toLowerCase().includes(s)||k.on.toLowerCase().includes(s)||k.kun.toLowerCase().includes(s)||k.ex.toLowerCase().includes(s)); },[q]);
@@ -479,6 +528,7 @@ function KanjiView(){
         <div><div className="ey">{KANJI.length} characters</div><h2>Kanji</h2><p>On'yomi in katakana, kun'yomi in hiragana, with a spoken example word.</p></div>
         <input className="btn" style={{minWidth:'200px'}} placeholder="Search kanji or meaning…" value={q} onChange={e=>setQ(e.target.value)}/>
       </div>
+      {nav && <div className="prac-cta"><span>Test your kanji meanings.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','kanji')}>✦ Practice kanji →</button></div>}
       <div className="kanji-grid">
         {list.map((k,i)=>(
           <div className="kj" key={k.c+i}>
@@ -497,13 +547,14 @@ function KanjiView(){
 }
 
 /* ---------- vocab ---------- */
-function VocabView(){
+function VocabView({nav}){
   const cats = useMemo(()=>['All',...Array.from(new Set(VOCAB.map(v=>v.cat)))],[]);
   const [cat,setCat] = useState('All');
   const list = cat==='All'?VOCAB:VOCAB.filter(v=>v.cat===cat);
   return (
     <section className="block wrap">
       <div className="shead"><div><div className="ey">{VOCAB.length} words</div><h2>Vocabulary</h2><p>Filter by theme. Each word shows kanji/kana, romaji, and meaning — tap 🔊 to hear it.</p></div></div>
+      {nav && <div className="prac-cta"><span>Turn reading into recall — quiz yourself on these words.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','vocab')}>✦ Practice vocab →</button></div>}
       <div className="chips" style={{marginBottom:18}}>{cats.map(c=>(<span key={c} className={cx('chip',cat===c&&'on')} onClick={()=>setCat(c)}>{c}</span>))}</div>
       <div className="vtable">
         <div className="vhead"><span>Japanese</span><span>Romaji</span><span>Meaning</span></div>
@@ -520,10 +571,11 @@ function VocabView(){
 }
 
 /* ---------- grammar ---------- */
-function GrammarView(){
+function GrammarView({nav}){
   return (
     <section className="block wrap">
       <div className="shead"><div><div className="ey">{GRAMMAR.length} patterns</div><h2>Grammar</h2><p>The core building blocks of N5 sentences, each with a spoken example.</p></div></div>
+      {nav && <div className="prac-cta"><span>Ready to drill grammar? Fill-in-the-blank questions test the exact particles &amp; patterns below.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','grammar')}>✦ Practice grammar →</button></div>}
       <div>
         {GRAMMAR.map((g,i)=>(
           <div className="gcard" key={i}>
@@ -582,9 +634,10 @@ function buildDeck(id){
   if(id==='hira') return KANA_HIRA.map(x=>({front:x.k,back:x.r,tag:'Hiragana',fc:'jp',say:x.k}));
   if(id==='kata') return KANA_KATA.map(x=>({front:x.k,back:x.r,tag:'Katakana',fc:'jp',say:x.k}));
   if(id==='kanji') return KANJI.map(k=>({front:k.c,back:k.mean,sub:'音 '+k.on+'　訓 '+k.kun,sub2:k.ex,tag:'Kanji',fc:'jp',say:exWord(k.ex)}));
+  if(id==='grammar') return GRAMMAR.map(g=>({front:g.point,back:g.meaning,sub:g.explain,sub2:(g.ex&&g.ex[0])?(g.ex[0].jp+' — '+g.ex[0].en):'',tag:'Grammar',fc:'jpw',say:(g.ex&&g.ex[0])?g.ex[0].jp:g.point}));
   return VOCAB.map(v=>({front:v.jp,back:v.en,sub:v.kana+' · '+v.romaji,tag:v.cat,fc:'jpw',say:v.kana}));
 }
-const DECKS = [['hira','Hiragana'],['kata','Katakana'],['kanji','Kanji'],['vocab','Vocabulary']];
+const DECKS = [['hira','Hiragana'],['kata','Katakana'],['kanji','Kanji'],['vocab','Vocabulary'],['grammar','Grammar']];
 function Flashcards({cp}){
   const [deckId,setDeckId] = useState('hira');
   const [order,setOrder] = useState(()=>buildDeck('hira'));
@@ -653,8 +706,8 @@ function makeQuestions(mode, cat){
   const allA=pool.map(x=>x.a);
   return shuffle(pool).slice(0,10).map(function(it){ return {kind:kind, prompt:it.p, sub:it.sub, say:it.say, correct:it.a, options:buildOptions(it.a, allA)}; });
 }
-function Quiz({cp}){
-  const [mode,setMode]=useState('kana');
+function Quiz({cp, initialMode}){
+  const [mode,setMode]=useState(initialMode||'kana');
   const [seed,setSeed]=useState(0);
   const [i,setI]=useState(0);
   const [picked,setPicked]=useState(null);
@@ -806,26 +859,23 @@ function Reading(){
   const [active,setActive] = useState(-1);
   const p = READING[idx];
   const segs = useMemo(()=>splitSentences(p.jp),[idx,p.jp]);
-  const timersRef = useRef([]); const bdyRef = useRef(false);
-  const clearTimers=()=>{ timersRef.current.forEach(function(t){clearTimeout(t);}); timersRef.current=[]; };
-  const stopAudio=()=>{ clearTimers(); try{window.speechSynthesis.cancel();}catch(e){} };
+  const runRef = useRef(0);
+  const stopAudio=()=>{ runRef.current++; try{window.speechSynthesis.cancel();}catch(e){} };
   useEffect(()=>()=>stopAudio(),[]);
-  const go=(d)=>{ stopAudio(); setIdx(i=>{ const n=i+d; if(n<0)return READING.length-1; if(n>=READING.length)return 0; return n; }); setPicked({}); setShowEn(false); setShowRo(false); setActive(-1); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} };
+  const go=(d)=>{ stopAudio(); setActive(-1); setIdx(i=>{ const n=i+d; if(n<0)return READING.length-1; if(n>=READING.length)return 0; return n; }); setPicked({}); setShowEn(false); setShowRo(false); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} };
+  // play one sentence at a time, highlighting exactly the sentence being spoken (always in sync)
   const play=()=>{
-    clearTimers(); bdyRef.current=false;
-    const sgs=segs; setActive(0);
-    // timer-driven highlight (works on every voice); boundary events refine it when supported
-    let t=0;
-    for(let i=0;i<sgs.length;i++){
-      const len=(sgs[i].t||'').replace(/\s/g,'').length;
-      if(i>0){ const seg=i; const at=t; timersRef.current.push(setTimeout(function(){ if(!bdyRef.current) setActive(seg); },at)); }
-      t += Math.max(650, len*175);
-    }
-    timersRef.current.push(setTimeout(function(){ if(!bdyRef.current) setActive(-1); }, t+500));
-    speak(p.jp, {
-      boundary:function(e){ if(!bdyRef.current){ bdyRef.current=true; clearTimers(); } const ci=(e&&e.charIndex)||0; let a=0; for(let j=0;j<sgs.length;j++){ if(sgs[j].start<=ci)a=j; } setActive(a); },
-      end:function(){ clearTimers(); setActive(-1); }
-    });
+    stopAudio();
+    const myRun=++runRef.current; const sgs=segs;
+    const step=function(i){
+      if(runRef.current!==myRun) return;
+      if(i>=sgs.length){ setActive(-1); return; }
+      const txt=(sgs[i].t||'').replace(/\n/g,' ').trim();
+      if(!txt){ step(i+1); return; }
+      setActive(i);
+      speak(txt, { end:function(){ if(runRef.current===myRun) setTimeout(function(){ step(i+1); },120); } });
+    };
+    step(0);
   };
   const pick=(qi,opt)=>{ setPicked(prev=> prev[qi]!=null ? prev : Object.assign({},prev,{[qi]:opt})); };
   return (
@@ -1026,7 +1076,7 @@ function Mock({cp}){
 }
 
 /* ---------- practice ---------- */
-function Practice({cp, tool, setTool}){
+function Practice({cp, tool, setTool, quizMode}){
   const t = tool||'review';
   const blurb = t==='mock' ? 'A timed, scored exam that mixes all five sections — see if you\'re ready for the real N5.'
     : t==='reading' ? 'Read short N5 texts and answer the questions — just like the exam\'s reading section.'
@@ -1043,7 +1093,7 @@ function Practice({cp, tool, setTool}){
         <button className={cx(t==='reading'&&'on')} onClick={()=>setTool('reading')}>📖 Reading</button>
         <button className={cx(t==='mock'&&'on')} onClick={()=>setTool('mock')}>📝 Mock</button>
       </div></div>
-      {t==='quiz'?<Quiz cp={cp}/>:t==='cards'?<Flashcards cp={cp}/>:t==='reading'?<Reading/>:t==='mock'?<Mock cp={cp}/>:<Review cp={cp}/>}
+      {t==='quiz'?<Quiz key={'q-'+(quizMode||'')} cp={cp} initialMode={quizMode}/>:t==='cards'?<Flashcards cp={cp}/>:t==='reading'?<Reading/>:t==='mock'?<Mock cp={cp}/>:<Review cp={cp}/>}
     </section>
   );
 }
@@ -1071,7 +1121,7 @@ function AuthScreen(){
     if(!email||!pass){ setErr('Enter your email and password.'); return; }
     if(mode==='signup'&&pass.length<6){ setErr('Password must be at least 6 characters.'); return; }
     setBusy(true);
-    const op = mode==='signup' ? cloud.auth.createUserWithEmailAndPassword(email.trim(),pass) : cloud.auth.signInWithEmailAndPassword(email.trim(),pass);
+    const op = mode==='signup' ? cloud.signUp(email.trim(),pass) : cloud.signIn(email.trim(),pass);
     op.catch(e=>{ setErr(authErr(e)); setBusy(false); });
   };
   return (
@@ -1123,12 +1173,12 @@ function App({user,onSignOut}){
       <Nav view={view} navigate={navigate} user={user} onSignOut={onSignOut} syncState={cp.syncState}/>
       <main className="main">
         {view==='home' && <Home setView={navigate} name={user.name} prog={cp.prog} setGoal={cp.setGoal} toggleDaily={cp.toggleDaily} setExamDate={cp.setExamDate}/>}
-        {view==='kana' && <KanaView/>}
-        {view==='kanji' && <KanjiView/>}
-        {view==='vocab' && <VocabView/>}
-        {view==='grammar' && <GrammarView/>}
+        {view==='kana' && <KanaView nav={navigate}/>}
+        {view==='kanji' && <KanjiView nav={navigate}/>}
+        {view==='vocab' && <VocabView nav={navigate}/>}
+        {view==='grammar' && <GrammarView nav={navigate}/>}
         {view==='numbers' && <NumbersView/>}
-        {view==='practice' && <Practice cp={cp} tool={route.sub||'review'} setTool={(x)=>navigate('practice', x==='review'?'':x)}/>}
+        {view==='practice' && <Practice cp={cp} tool={route.sub||'review'} setTool={(x)=>navigate('practice', x==='review'?'':x)} quizMode={route.sub2}/>}
       </main>
       <footer className="foot"><div className="jp">頑張って！</div><div style={{marginTop:6}}>Built for JLPT N5 learners · Read, listen, then recall.</div></footer>
       <BottomNav view={view} navigate={navigate}/>
@@ -1138,22 +1188,29 @@ function App({user,onSignOut}){
 
 /* ---------- root (auth gate) ---------- */
 function Root(){
-  const [user,setUser] = useState(null);
-  const [ready,setReady] = useState(false);
+  const [user,setUser] = useState(undefined); // undefined = still loading
+  const [fail,setFail] = useState(false);
   useEffect(()=>{
-    if(cloud.ok){
-      const unsub = cloud.auth.onAuthStateChanged(fu=>{
-        setUser(fu ? {uid:fu.uid, email:fu.email, name:(fu.email||'You').split('@')[0]} : null);
-        setReady(true);
-      });
-      return unsub;
-    } else { setReady(true); }
+    let alive=true, unsub=null, tries=0;
+    const begin=()=>{
+      cloud.init();
+      if(!cloud.ok){ if(alive) setFail(true); return; }
+      unsub = cloud.onAuth(function(fu){ if(alive) setUser(fu ? {uid:fu.uid, email:fu.email, name:(fu.email||'You').split('@')[0]} : null); });
+    };
+    const tick=()=>{
+      if(!alive) return;
+      if(cloud.ready()){ begin(); return; }       // wait until the SDK is available
+      if(tries++ > 240){ if(alive) setFail(true); return; }   // ~12s, then show guidance
+      setTimeout(tick, 50);
+    };
+    tick();
+    return ()=>{ alive=false; if(unsub){ try{unsub();}catch(e){} } };
   },[]);
-  if(!ready) return <Splash/>;
-  if(!cloud.ok) return <CloudError/>;     // sign-in unavailable → cannot enter
+  if(fail) return <CloudError/>;           // Firebase couldn't load (offline / blocked preview)
+  if(user===undefined) return <Splash/>;   // loading
   if(!user) return <AuthScreen/>;          // login required
-  const signOut = ()=>{ try{ cloud.auth.signOut(); }catch(e){} setUser(null); };
+  const signOut = ()=>{ try{ cloud.signOut(); }catch(e){} setUser(null); };
   return <App key={user.uid} user={user} onSignOut={signOut}/>;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<Root/>);
+export { Root };

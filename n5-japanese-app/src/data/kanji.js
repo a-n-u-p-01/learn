@@ -93,5 +93,27 @@ var KANJI = [
   {c:'何',on:'カ',kun:'なに・なん',mean:'what',ex:'何 (なに) what'},
   {c:'車',on:'シャ',kun:'くるま',mean:'car, vehicle',ex:'車 (くるま) car'},
   {c:'電',on:'デン',kun:'—',mean:'electricity',ex:'電車 (でんしゃ) train'},
-  {c:'口',on:'コウ・ク',kun:'くち',mean:'mouth',ex:'口 (くち) mouth'}
+  {c:'口',on:'コウ・ク',kun:'くち',mean:'mouth',ex:'口 (くち) mouth'},
+  // Body
+  {c:'手',on:'シュ',kun:'て',mean:'hand',ex:'手 (て) hand'},
+  {c:'足',on:'ソク',kun:'あし・た(りる)',mean:'foot, leg',ex:'足 (あし) foot/leg'},
+  {c:'目',on:'モク',kun:'め',mean:'eye',ex:'目 (め) eye'},
+  {c:'耳',on:'ジ',kun:'みみ',mean:'ear',ex:'耳 (みみ) ear'},
+  // Actions & qualities
+  {c:'立',on:'リツ',kun:'た(つ)',mean:'stand',ex:'立つ (たつ) to stand'},
+  {c:'力',on:'リョク・リキ',kun:'ちから',mean:'power, strength',ex:'力 (ちから) strength'},
+  {c:'早',on:'ソウ',kun:'はや(い)',mean:'early, fast',ex:'早い (はやい) early'},
+  {c:'多',on:'タ',kun:'おお(い)',mean:'many, much',ex:'多い (おおい) many'},
+  {c:'少',on:'ショウ',kun:'すく(ない)・すこ(し)',mean:'few, little',ex:'少し (すこし) a little'},
+  // Things & places
+  {c:'字',on:'ジ',kun:'—',mean:'character, letter',ex:'漢字 (かんじ) kanji'},
+  {c:'花',on:'カ',kun:'はな',mean:'flower',ex:'花 (はな) flower'},
+  {c:'空',on:'クウ',kun:'そら・あ(く)',mean:'sky, empty',ex:'空 (そら) sky'},
+  {c:'魚',on:'ギョ',kun:'さかな・うお',mean:'fish',ex:'魚 (さかな) fish'},
+  {c:'店',on:'テン',kun:'みせ',mean:'shop, store',ex:'店 (みせ) shop'},
+  {c:'買',on:'バイ',kun:'か(う)',mean:'buy',ex:'買う (かう) to buy'},
+  {c:'駅',on:'エキ',kun:'—',mean:'station',ex:'駅 (えき) station'},
+  {c:'道',on:'ドウ',kun:'みち',mean:'road, way',ex:'道 (みち) road, street'}
 ];
+
+export { KANJI };

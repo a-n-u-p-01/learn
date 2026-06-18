@@ -688,3 +688,5 @@ var VOCAB = [
   {jp:'勉強',kana:'べんきょう',romaji:'benkyō',en:'study',cat:'Common'},
   {jp:'たばこ',kana:'たばこ',romaji:'tabako',en:'cigarette, tobacco',cat:'Common'}
 ];
+
+export { VOCAB };
