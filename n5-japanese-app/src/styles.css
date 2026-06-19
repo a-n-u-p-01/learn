@@ -201,8 +201,8 @@ section{scroll-margin-top:84px}
 .fc-front .q{font-family:var(--jp);font-size:clamp(56px,14vw,104px);font-weight:600;line-height:1;color:#fff}
 .fc-front .qs{font-family:var(--jp);font-size:clamp(30px,7vw,46px);font-weight:500}
 .fc-back{transform:rotateY(180deg);background:linear-gradient(180deg,#1a1410,var(--bg-1))}
-.fc-back .a{font-size:clamp(30px,7vw,46px);font-weight:800;color:var(--accent-2)}
-.fc-back .sub{font-family:var(--jp);font-size:18px;color:var(--fg)}
+.fc-back .a{font-size:clamp(12px,6vw,16px);font-weight:800;color:var(--accent-2)}
+.fc-back .sub{font-family:var(--jp);font-size:14px;color:var(--fg)}
 .fc-back .sub2{font-size:14px;color:var(--muted)}
 .fc-controls{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px}
 .icon-btn{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;cursor:pointer;
