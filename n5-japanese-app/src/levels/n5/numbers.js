@@ -1,5 +1,5 @@
 // JLPT N5 numbers, time & counters reference
-var NUMBERS = {
+var N5_NUMBERS = {
   hours: [
     {jp:'一時',k:'いちじ',e:'1:00'},
     {jp:'二時',k:'にじ',e:'2:00'},
@@ -54,4 +54,4 @@ var NUMBERS = {
   ]
 };
 
-export { NUMBERS };
+export { N5_NUMBERS };

@@ -1,5 +1,5 @@
 // JLPT N5 vocabulary — comprehensive set. cat = category for filtering
-var VOCAB = [
+var N5_VOCAB = [
   // Greetings & set phrases
   {jp:'おはようございます',kana:'おはようございます',romaji:'ohayō gozaimasu',en:'good morning (polite)',cat:'Greetings'},
   {jp:'こんにちは',kana:'こんにちは',romaji:'konnichiwa',en:'hello, good afternoon',cat:'Greetings'},
@@ -689,4 +689,4 @@ var VOCAB = [
   {jp:'たばこ',kana:'たばこ',romaji:'tabako',en:'cigarette, tobacco',cat:'Common'}
 ];
 
-export { VOCAB };
+export { N5_VOCAB };

@@ -1,5 +1,5 @@
 // JLPT N5 core kanji. on = on'yomi, kun = kun'yomi, ex = example word (reading) meaning
-var KANJI = [
+var N5_KANJI = [
   // Numbers & money
   {c:'一',on:'イチ',kun:'ひと(つ)',mean:'one',ex:'一つ (ひとつ) one thing'},
   {c:'二',on:'ニ',kun:'ふた(つ)',mean:'two',ex:'二つ (ふたつ) two things'},
@@ -116,4 +116,4 @@ var KANJI = [
   {c:'道',on:'ドウ',kun:'みち',mean:'road, way',ex:'道 (みち) road, street'}
 ];
 
-export { KANJI };
+export { N5_KANJI };

@@ -1,11 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { KANA } from './data/kana.js';
-import { KANJI } from './data/kanji.js';
-import { VOCAB } from './data/vocab.js';
-import { GRAMMAR } from './data/grammar.js';
-import { GRAMMARQ } from './data/grammarq.js';
-import { READING } from './data/reading.js';
-import { NUMBERS } from './data/numbers.js';
+import { LEVELS, LEVEL_ORDER } from './levels/registry.js';
 
 /* ---------- helpers ---------- */
 function shuffle(arr){
@@ -41,7 +35,7 @@ function useHashRoute(){
 
 /* ===== CLOUD:MODULAR — modular Firebase SDK (Vite build) ===== */
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { FIREBASE_CONFIG } from './firebase-config.js';
 const cloud = {
@@ -56,15 +50,20 @@ const cloud = {
     }catch(e){ this.ok=false; }
   },
   ready(){ return true; },
-  onAuth(cb){ return onAuthStateChanged(this.auth, cb); },
-  signIn(email,pass){ return signInWithEmailAndPassword(this.auth, email, pass); },
-  signUp(email,pass){ return createUserWithEmailAndPassword(this.auth, email, pass); },
+  onAuth(cb){ try{ return onAuthStateChanged(this.auth, cb); }catch(e){ return function(){}; } },
+  signInGoogle(){ if(!this.ok) this.init(); return signInWithPopup(this.auth, new GoogleAuthProvider()); },
   signOut(){ try{ return fbSignOut(this.auth); }catch(e){} },
   load(uid){ return getDoc(doc(this.db,'progress',uid)).then(function(s){ return s.exists() ? (s.data().data||null) : null; }); },
   save(uid, data){ try{ return setDoc(doc(this.db,'progress',uid), { data, updatedAt:new Date().toISOString() }, { merge:true }).catch(function(){}); }catch(e){ return Promise.resolve(); } },
   subscribe(uid, cb){ return onSnapshot(doc(this.db,'progress',uid), function(snap){ if(snap.metadata && snap.metadata.hasPendingWrites) return; cb(snap.exists() ? (snap.data().data||null) : null); }, function(){}); }
 };
 /* ===== /CLOUD ===== */
+/* ---------- local store (guest-first; the app works with no account) ---------- */
+const GUEST_KEY = 'nihongo_guest_v1';
+function lsGet(k){ try{ return JSON.parse(window.localStorage.getItem(k)||'null'); }catch(e){ return null; } }
+function lsSet(k,v){ try{ window.localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function lsDel(k){ try{ window.localStorage.removeItem(k); }catch(e){} }
+function userKey(uid){ return 'nihongo_u_'+uid; }
 
 /* ---------- progress (cloud only — Firestore is the single source of truth) ---------- */
 function mergeProg(a,b){
@@ -83,7 +82,27 @@ function mergeProg(a,b){
   const examDate=a.examDate||b.examDate||'';
   const daily=Object.assign({}, a.daily); const bd=b.daily||{};
   for(const d in bd){ daily[d]=Object.assign({}, daily[d]||{}, bd[d]||{}); }
-  return {known, best, srs, stats, mockHistory, examDate, daily};
+  // rolling per-section accuracy windows (keep the richer/longer side, capped)
+  const secA=a.secStats||{}, secB=b.secStats||{}, secStats={};
+  Object.keys(secA).concat(Object.keys(secB)).forEach(function(k){ const aa=secA[k]||[], bb=secB[k]||[]; secStats[k]=(aa.length>=bb.length?aa:bb).slice(-30); });
+  // mistake queue: dedupe by section|prompt|correct, keep most recent 100
+  const mk={}; (a.mistakes||[]).concat(b.mistakes||[]).forEach(function(x){ if(x&&x.prompt!=null) mk[(x.section||'')+'|'+x.prompt+'|'+x.correct]=x; });
+  const mistakes=Object.keys(mk).map(function(k){return mk[k];}).sort(function(x,y){return (x.t||0)-(y.t||0);}).slice(-100);
+  return {known, best, srs, stats, mockHistory, examDate, daily, secStats, mistakes};
+}
+/* ---------- multi-level document (one Firestore doc per user, progress per level) ---------- */
+function migrateDoc(d){
+  if(!d) return {levels:{}, activeLevel:'n5'};
+  if(d.levels) return { levels:Object.assign({},d.levels), activeLevel:d.activeLevel||'n5' };
+  // legacy flat shape ({known,srs,...}) → wrap as the n5 level so existing users keep everything
+  if(d.known||d.srs||d.stats||d.best||d.mockHistory||d.examDate||d.daily) return { levels:{ n5:d }, activeLevel:'n5' };
+  return {levels:{}, activeLevel:'n5'};
+}
+function mergeDoc(a,b){
+  a=migrateDoc(a); b=migrateDoc(b);
+  const levels=Object.assign({}, a.levels);
+  for(const k in b.levels){ levels[k]=mergeProg(levels[k], b.levels[k]); }
+  return { levels:levels, activeLevel:a.activeLevel||b.activeLevel||'n5' };
 }
 
 /* ---------- spaced repetition (SM-2 lite) ---------- */
@@ -135,38 +154,53 @@ function bumpStats(stats, today){
 }
 function effectiveStreak(stats){ if(!stats||!stats.lastActive)return 0; const t=dayStr(); return (stats.lastActive===t||stats.lastActive===addDays(t,-1))?(stats.streak||0):0; }
 function mergeStats(a,b){ if(!a)return b||null; if(!b)return a; const base=(a.lastActive>=b.lastActive)?a:b; const out=Object.assign({},base); out.best=Math.max(a.best||0,b.best||0); out.goal=base.goal||a.goal||b.goal||20; if(a.todayDate&&a.todayDate===b.todayDate)out.todayCount=Math.max(a.todayCount||0,b.todayCount||0); return out; }
-function useCloudProgress(uid){
-  const [prog,setProg] = useState({known:{},best:{},srs:{}});
-  const [loaded,setLoaded] = useState(false);
-  const [syncState,setSyncState] = useState('idle'); // idle | saving | saved
+function useCloudProgress(user, level){
+  const signedIn = !!(user && user.uid);
+  const uid = signedIn ? user.uid : null;
+  const [doc,setDoc] = useState(function(){ const d = signedIn ? (lsGet(userKey(uid))||{levels:{},activeLevel:'n5'}) : (lsGet(GUEST_KEY)||{levels:{},activeLevel:'n5'}); return migrateDoc(d); });
+  const [syncState,setSyncState] = useState(signedIn ? 'saving' : 'local'); // local | saving | saved
   const timer = useRef(null);
-  const progRef = useRef(prog);
-  const loadedRef = useRef(false);
-  useEffect(()=>{ progRef.current = prog; },[prog]);
-  useEffect(()=>{ loadedRef.current = loaded; },[loaded]);
-  const queueSave = (next)=>{ if(!cloud.ok) return; setSyncState('saving'); clearTimeout(timer.current); timer.current=setTimeout(()=>{ cloud.save(uid,next).then(()=>setSyncState('saved')); },500); };
+  const docRef = useRef(doc);
+  useEffect(()=>{ docRef.current = doc; },[doc]);
+  // persist locally always; when signed in, also debounce a cloud save
+  const persist = (next)=>{
+    if(signedIn){ lsSet(userKey(uid), next); if(cloud.ok){ setSyncState('saving'); clearTimeout(timer.current); timer.current=setTimeout(function(){ cloud.save(uid,next).then(function(){ setSyncState('saved'); }); },500); } }
+    else { lsSet(GUEST_KEY, next); setSyncState('local'); }
+  };
+  // commit operates on the ACTIVE level's slice; the rest of the document is preserved
   const commit = useCallback((updater)=>{
-    setProg(prev=>{ const next = typeof updater==='function'?updater(prev):updater; queueSave(next); return next; });
-  },[uid]);
-  // load from Firestore + live cross-device subscription (DB is the only store)
+    setDoc(prev=>{
+      const cur = (prev.levels&&prev.levels[level]) || {known:{},best:{},srs:{}};
+      const nextSlice = typeof updater==='function' ? updater(cur) : updater;
+      const levels = Object.assign({}, prev.levels); levels[level] = nextSlice;
+      const next = Object.assign({}, prev, {levels:levels});
+      persist(next); return next;
+    });
+  },[uid,level,signedIn]);
+  // when signed in: pull cloud, claim any guest progress once, then stay live-synced
   useEffect(()=>{
-    if(!cloud.ok){ setLoaded(true); return; }
+    if(!signedIn || !cloud.ok) return;
     let alive=true, unsub=null;
-    cloud.load(uid).then(d=>{ if(!alive)return; if(d) setProg(prev=>mergeProg(prev,d)); setLoaded(true); }).catch(()=>{ if(alive) setLoaded(true); });
-    try{
-      unsub = cloud.subscribe(uid, function(d){ if(alive && d) setProg(prev=>mergeProg(prev,d)); });
-    }catch(e){}
+    const guest = lsGet(GUEST_KEY);
+    cloud.load(uid).then(function(d){ if(!alive)return;
+      setDoc(function(prev){ let m=mergeDoc(prev,d); if(guest) m=mergeDoc(m,guest); lsSet(userKey(uid),m); cloud.save(uid,m); return m; });
+      if(guest) lsDel(GUEST_KEY);   // claimed into this account — never re-merge into a different account
+      setSyncState('saved');
+    }).catch(function(){});
+    try{ unsub = cloud.subscribe(uid, function(d){ if(alive && d) setDoc(function(prev){ const m=mergeDoc(prev,d); lsSet(userKey(uid),m); return m; }); }); }catch(e){}
     return ()=>{ alive=false; if(unsub){ try{unsub();}catch(e){} } };
-  },[uid]);
-  // flush latest to the cloud when the tab is hidden/closed (never before first load)
+  },[uid,signedIn]);
+  // flush to cloud when the tab is hidden/closed (signed in only)
   useEffect(()=>{
-    if(!cloud.ok) return;
-    const flush=()=>{ if(!loadedRef.current) return; clearTimeout(timer.current); try{ cloud.save(uid, progRef.current); }catch(e){} };
+    if(!signedIn || !cloud.ok) return;
+    const flush=()=>{ clearTimeout(timer.current); try{ cloud.save(uid, docRef.current); }catch(e){} };
     const onVis=()=>{ try{ if(document.visibilityState==='hidden') flush(); }catch(e){} };
     try{ document.addEventListener('visibilitychange',onVis); window.addEventListener('pagehide',flush); }catch(e){}
     return ()=>{ try{ document.removeEventListener('visibilitychange',onVis); window.removeEventListener('pagehide',flush); }catch(e){} };
-  },[uid]);
-  // updaters use Object.assign(prev,...) so every field (examDate, daily, mockHistory, …) is preserved
+  },[uid,signedIn]);
+  // remember which level the user was last on
+  const setLevelPref=(lv)=>{ setDoc(prev=>{ const next=Object.assign({},prev,{activeLevel:lv}); persist(next); return next; }); };
+  // updaters use Object.assign(prev,...) so every field (examDate, daily, mockHistory, …) is preserved within the level slice
   const markKnown=(deck,front)=>commit(prev=>{ const d=Object.assign({},(prev.known||{})[deck]||{}); if(d[front])delete d[front]; else d[front]=1; const known=Object.assign({},prev.known); known[deck]=d; return Object.assign({},prev,{known:known}); });
   const setBest=(mode,score)=>commit(prev=>{ const best=Object.assign({},prev.best); best[mode]=Math.max(best[mode]||0,score); return Object.assign({},prev,{best:best}); });
   const reviewCard=(deck,front,grade)=>commit(prev=>{
@@ -192,11 +226,26 @@ function useCloudProgress(uid){
   const toggleDaily=(key)=>commit(prev=>{
     const t=dayStr(); const daily=Object.assign({}, prev.daily||{}); const day=Object.assign({}, daily[t]||{});
     day[key]=!day[key]; daily[t]=day;
-    // keep only the last few days
     const keys=Object.keys(daily).sort(); while(keys.length>7){ delete daily[keys.shift()]; }
     return Object.assign({},prev,{daily:daily});
   });
-  return { prog, loaded, markKnown, setBest, reviewCard, setGoal, addMockResult, setExamDate, toggleDaily, syncState };
+  // rolling per-section accuracy (last 30 attempts/section) — recent ability, not lifetime
+  const recordAttempt=(section,correct)=>commit(prev=>{ if(!section)return prev; const ss=Object.assign({},prev.secStats||{}); ss[section]=(ss[section]||[]).concat([correct?1:0]).slice(-30); return Object.assign({},prev,{secStats:ss}); });
+  // mistake queue: only question-type mistakes (quiz/reading/mock); deduped; capped 100
+  const addMistake=(item)=>commit(prev=>{ if(!item||item.prompt==null)return prev; const key=(item.section||'')+'|'+item.prompt+'|'+item.correct; const list=(prev.mistakes||[]).filter(function(m){return ((m.section||'')+'|'+m.prompt+'|'+m.correct)!==key;}); list.push(Object.assign({},item,{t:Date.now()})); return Object.assign({},prev,{mistakes:list.slice(-100)}); });
+  const clearMistake=(key)=>commit(prev=>{ const list=(prev.mistakes||[]).filter(function(m){return ((m.section||'')+'|'+m.prompt+'|'+m.correct)!==key;}); return Object.assign({},prev,{mistakes:list}); });
+  // one-shot batch (used by the mock so a whole exam = a single write)
+  const recordBatch=(attempts, mistakeItems)=>commit(prev=>{
+    const ss=Object.assign({}, prev.secStats||{});
+    (attempts||[]).forEach(function(a){ if(a.section) ss[a.section]=(ss[a.section]||[]).concat([a.ok?1:0]).slice(-30); });
+    let list=(prev.mistakes||[]).slice();
+    (mistakeItems||[]).forEach(function(item){ if(item&&item.prompt!=null){ const key=(item.section||'')+'|'+item.prompt+'|'+item.correct; list=list.filter(function(m){return ((m.section||'')+'|'+m.prompt+'|'+m.correct)!==key;}); list.push(Object.assign({},item,{t:Date.now()})); } });
+    return Object.assign({},prev,{secStats:ss, mistakes:list.slice(-100)});
+  });
+  const prog = (doc.levels&&doc.levels[level]) || {known:{},best:{},srs:{}};
+  // due-review counts for every level (so the home screen can nudge you to the other level)
+  const levelDue={}; try{ (typeof LEVEL_ORDER!=='undefined'?LEVEL_ORDER:[]).forEach(function(id){ levelDue[id]=dueCount(((doc.levels||{})[id]||{}).srs); }); }catch(e){}
+  return { prog, loaded:true, signedIn, activeLevel:doc.activeLevel, levelDue, setLevelPref, markKnown, setBest, reviewCard, setGoal, addMockResult, setExamDate, toggleDaily, recordAttempt, addMistake, clearMistake, recordBatch, syncState };
 }
 
 /* ---------- voice (Web Speech API) ---------- */
@@ -225,42 +274,73 @@ function SpeakBtn({text,label,lg}){
   return <button className={cx('spk',lg&&'lg')} aria-label={'Play pronunciation'+(label?' for '+label:'')} onClick={(e)=>{e.stopPropagation();speak(text);}}>🔊</button>;
 }
 
-/* ---------- counts ---------- */
-const KANA_HIRA = [...KANA.hiragana.base,...KANA.hiragana.dakuten,...KANA.hiragana.yoon];
-const KANA_KATA = [...KANA.katakana.base,...KANA.katakana.dakuten,...KANA.katakana.yoon];
-const TOTAL_CARDS = KANA_HIRA.length + KANA_KATA.length + KANJI.length + VOCAB.length + GRAMMAR.length;
+/* ---------- active level (content is swapped in by setActiveLevel; same engine for every level) ---------- */
+let KANA, KANJI, VOCAB, GRAMMAR, GRAMMARQ, READING, NUMBERS, LEVEL_META;
+let KANA_HIRA=[], KANA_KATA=[], TOTAL_CARDS=0, VOCAB_CATS=['All'], DECKS=[], QUIZZES=[], TABS=[];
+function setActiveLevel(id){
+  const reg = (typeof LEVELS!=='undefined') ? LEVELS : null;
+  const L = reg ? (reg[id] || reg[LEVEL_ORDER[0]]) : null;
+  if(!L) return;
+  LEVEL_META = L;
+  KANA=L.kana; KANJI=L.kanji; VOCAB=L.vocab; GRAMMAR=L.grammar; GRAMMARQ=L.grammarq; READING=L.reading; NUMBERS=L.numbers;
+  KANA_HIRA = KANA ? [...KANA.hiragana.base,...KANA.hiragana.dakuten,...KANA.hiragana.yoon] : [];
+  KANA_KATA = KANA ? [...KANA.katakana.base,...KANA.katakana.dakuten,...KANA.katakana.yoon] : [];
+  TOTAL_CARDS = (L.hasKana?(KANA_HIRA.length+KANA_KATA.length):0) + KANJI.length + VOCAB.length + GRAMMAR.length;
+  VOCAB_CATS = ['All'].concat(Array.from(new Set(VOCAB.map(function(v){return v.cat;}))));
+  DECKS = L.decks;
+  QUIZZES = L.hasKana ? [['kana','Kana'],['vocab','Vocab'],['kanji','Kanji'],['listen','Listening'],['grammar','Grammar']]
+                      : [['vocab','Vocab'],['kanji','Kanji'],['listen','Listening'],['grammar','Grammar']];
+  TABS = [['home','Overview']].concat(L.hasKana?[['kana','Kana']]:[], [['kanji','Kanji'],['vocab','Vocabulary'],['grammar','Grammar'],['practice','Practice']]);
+}
 function exWord(ex){ return (ex||'').split(' (')[0]; }
 
 /* ---------- nav ---------- */
-const TABS = [['home','Overview'],['kana','Kana'],['kanji','Kanji'],['vocab','Vocabulary'],['grammar','Grammar'],['practice','Practice']];
 const NAVICON = {home:'家',kana:'あ',kanji:'漢',vocab:'語',grammar:'文',practice:'練'};
 const NAVSHORT = {home:'Home',kana:'Kana',kanji:'Kanji',vocab:'Words',grammar:'Grammar',practice:'Practice'};
-function Nav({view,navigate,user,onSignOut,syncState}){
+const LEVEL_MARK = {'5':'五','4':'四','3':'三','2':'二','1':'一'};
+function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel}){
   const [menu,setMenu] = useState(false);
-  const syncTxt = syncState==='saving' ? '☁ Saving…' : '☁ Cloud sync on';
+  const signedIn = !!(user && user.uid);
+  const syncTxt = signedIn ? (syncState==='saving' ? '☁ Saving…' : '☁ Synced across devices') : '✓ Saved on this device';
+  const mark = LEVEL_MARK[(LEVEL_META.label||'').slice(-1)] || '語';
+  const avatar = signedIn ? (user.name||'U').charAt(0).toUpperCase() : '☺';
   return (
     <nav className="nav">
       <div className="wrap nav-inner">
         <div className="brand" onClick={()=>navigate('home')} style={{cursor:'pointer'}}>
-          <span className="mark">五</span>
-          <span>N5 日本語<small>Japanese from zero</small></span>
+          <span className="mark">{mark}</span>
+          <span>日本語<small>JLPT {LEVEL_META.label} · Japanese</small></span>
+        </div>
+        <div className="levelsw" role="tablist" aria-label="JLPT level">
+          {LEVEL_ORDER.map(function(id){ return <button key={id} className={cx('lvbtn',level===id&&'on')} aria-pressed={level===id} onClick={()=>setLevel(id)}>{LEVELS[id].label}</button>; })}
         </div>
         <div className="tabs">
           {TABS.map(([id,label])=>(<span key={id} className={cx('tab',view===id&&'on')} aria-current={view===id?'page':undefined} onClick={()=>navigate(id)}>{label}</span>))}
         </div>
         <div className="prof">
-          <button className="prof-btn" onClick={()=>setMenu(m=>!m)} aria-label="Account menu">
-            <span className="ava on">{(user.name||'U').charAt(0).toUpperCase()}</span>
-            <span className="prof-name">{user.name}</span>
+          <button className={cx('prof-btn',!signedIn&&'guest')} onClick={()=>setMenu(m=>!m)} aria-label="Account menu">
+            <span className={cx('ava',signedIn&&'on')}>{avatar}</span>
+            <span className="prof-name">{signedIn?user.name:'Guest'}</span>
           </button>
           {menu && (
             <React.Fragment>
               <div className="menu-back" onClick={()=>setMenu(false)}/>
               <div className="prof-menu">
-                <div className="who">{user.email}<br/><span className="synctag on">{syncTxt}</span></div>
-                <div className="sep"/>
-                <button className="mi" onClick={()=>{setMenu(false);navigate('practice');}}>Continue practicing</button>
-                <button className="mi danger" onClick={()=>{setMenu(false);onSignOut();}}>Sign out</button>
+                {signedIn ? (
+                  <React.Fragment>
+                    <div className="who">{user.email}<br/><span className="synctag on">{syncTxt}</span></div>
+                    <div className="sep"/>
+                    <button className="mi" onClick={()=>{setMenu(false);navigate('practice');}}>Continue practicing</button>
+                    <button className="mi danger" onClick={()=>{setMenu(false);onSignOut();}}>Sign out</button>
+                  </React.Fragment>
+                ) : (
+                  <React.Fragment>
+                    <div className="who">Studying as a guest<br/><span className="synctag">Progress saved on this device</span></div>
+                    <div className="sep"/>
+                    <div style={{padding:'4px 6px 8px'}}><GoogleBtn onSignIn={onSignIn} label="Sign in to sync" full/></div>
+                    <div className="muted" style={{fontSize:'11.5px',padding:'0 8px 6px',lineHeight:1.5}}>Sign in to save your progress and use it on your phone and computer.</div>
+                  </React.Fragment>
+                )}
               </div>
             </React.Fragment>
           )}
@@ -310,7 +390,7 @@ function MasteryPanel({pct, known, total, areas}){
   return (
     <section className="block wrap" style={{paddingBottom:0}}>
       <div className="mastery">
-        <div className="mhead"><div><div className="ey">Your progress</div><h2>N5 mastery</h2></div><div className="mpct">{pct}<span>%</span></div></div>
+        <div className="mhead"><div><div className="ey">Your progress</div><h2>{LEVEL_META.label} mastery</h2></div><div className="mpct">{pct}<span>%</span></div></div>
         <div className="pbar big"><i style={{width:Math.max(pct,2)+'%'}}/></div>
         <div className="msub">{known} of {total} cards mastered · keep reviewing to grow this</div>
         <div className="mareas">
@@ -325,17 +405,99 @@ function MasteryPanel({pct, known, total, areas}){
     </section>
   );
 }
-function NextLevel({pct}){
+function WeakAreas({prog, setView}){
+  const ss = prog.secStats||{};
+  const rows = Object.keys(ss).filter(function(k){ return (ss[k]||[]).length>0; })
+    .map(function(k){ const arr=ss[k]; const pct=Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length*100); return [k,pct,arr.length]; })
+    .sort(function(a,b){ return a[1]-b[1]; });
+  if(!rows.length) return null;
+  const weak=rows[0];
+  const GO={Kana:['kana',''],Vocabulary:['practice','quiz'],Kanji:['practice','quiz'],Grammar:['practice','quiz'],Listening:['practice','quiz'],Reading:['practice','reading']};
+  return (
+    <section className="block wrap" style={{paddingTop:0}}>
+      <div className="mastery">
+        <div className="mhead"><div><div className="ey">Recent accuracy</div><h2>Weak areas</h2></div></div>
+        <div className="msub">From your most recent answers per section — live exam-readiness, not a lifetime average.</div>
+        <div className="mareas">
+          {rows.map(function(r){ return (
+            <div className="marea" key={r[0]}>
+              <div className="lab"><span>{r[0]}</span><span>{r[1]}% · {r[2]} ans</span></div>
+              <div className="pbar"><i style={{width:Math.max(r[1],2)+'%', background:r[1]<60?'linear-gradient(90deg,#e0463b,#ff5d52)':undefined}}/></div>
+            </div>
+          ); })}
+        </div>
+        <div className="examrow" style={{marginTop:14}}>
+          <span>📌 Study next: <b>{weak[0]}</b> ({weak[1]}%)</span>
+          <button className="btn primary sm" onClick={function(){ var g=GO[weak[0]]||['practice','quiz']; setView(g[0],g[1]); }}>Practice {weak[0]} →</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+function readinessScore(prog){
+  const known = prog.known||{};
+  const knownCount = Object.keys(known).reduce(function(a,k){return a+Object.keys(known[k]||{}).length;},0);
+  const mastery = Math.min(100, Math.round(knownCount/Math.max(TOTAL_CARDS,1)*100));
+  const recent = (prog.mockHistory||[]).slice(-3);
+  const mockAvg = recent.length ? Math.round(recent.reduce(function(a,d){return a+(d.pct||0);},0)/recent.length) : null;
+  const ss = prog.secStats||{}; const secs = Object.keys(ss).filter(function(k){return (ss[k]||[]).length>=3;});
+  const weakAvg = secs.length ? Math.round(secs.reduce(function(a,k){var arr=ss[k];return a+arr.reduce(function(x,y){return x+y;},0)/arr.length*100;},0)/secs.length) : null;
+  var parts=[[mastery,0.5]]; if(mockAvg!=null)parts.push([mockAvg,0.3]); if(weakAvg!=null)parts.push([weakAvg,0.2]);
+  var wsum=parts.reduce(function(a,p){return a+p[1];},0);
+  return {score:Math.round(parts.reduce(function(a,p){return a+p[0]*p[1];},0)/wsum), mastery:mastery, mockAvg:mockAvg, weakAvg:weakAvg};
+}
+function ReadinessPanel({prog}){
+  const rd=readinessScore(prog);
+  const note = rd.score<50?'Early days — build the daily habit.':(rd.score<70?'Getting there — keep drilling weak areas.':(rd.score<85?'Solid — keep reviewing and do mocks.':'Looking exam-ready! 🎉'));
+  return (
+    <section className="block wrap" style={{paddingTop:0}}>
+      <div className="mastery">
+        <div className="mhead"><div><div className="ey">Estimated exam readiness</div><h2>Ready for {LEVEL_META.label}?</h2></div><div className="mpct">{rd.score}<span>%</span></div></div>
+        <div className="pbar big"><i style={{width:Math.max(rd.score,2)+'%'}}/></div>
+        <div className="msub">From mastery {rd.mastery}%{rd.mockAvg!=null?(' · recent mocks '+rd.mockAvg+'%'):''}{rd.weakAvg!=null?(' · recent accuracy '+rd.weakAvg+'%'):''}. {note}</div>
+      </div>
+    </section>
+  );
+}
+function OtherLevels({levelDue, level, setLevel}){
+  if(!levelDue || typeof LEVEL_ORDER==='undefined') return null;
+  const others = LEVEL_ORDER.filter(function(id){ return id!==level && (levelDue[id]||0)>0; });
+  if(!others.length) return null;
+  return (
+    <div className="prac-cta" style={{marginTop:18}}>
+      <span>🔁 {others.map(function(id){ return LEVELS[id].label+': '+levelDue[id]+' review'+(levelDue[id]===1?'':'s')+' due'; }).join(' · ')}</span>
+      <button className="btn primary sm" onClick={function(){ setLevel(others[0]); }}>Switch to {LEVELS[others[0]].label} →</button>
+    </div>
+  );
+}
+function NextLevel({pct, setLevel}){
   const ready = pct>=80;
+  const cur = LEVEL_META;
+  const nextId = cur.next;
+  if(nextId && typeof LEVELS!=='undefined' && LEVELS[nextId]){
+    const nl = LEVELS[nextId];
+    return (
+      <section className="block wrap">
+        <a className="n4card" href="#" onClick={(e)=>{e.preventDefault(); if(setLevel)setLevel(nextId);}} style={{cursor:'pointer'}}>
+          <div className="n4info">
+            <div className="ey">{ready?"You're ready 🎉":'Next level'}</div>
+            <h3>Continue to JLPT {nl.label} <span className="arr">→</span></h3>
+            <p>You've mastered {pct}% of {cur.label}. JLPT {nl.label} builds on everything here — more kanji, vocabulary and grammar. Your {nl.label} progress is tracked separately.</p>
+          </div>
+          <div className="n4badge">{nl.label}</div>
+        </a>
+      </section>
+    );
+  }
   return (
     <section className="block wrap">
-      <a className="n4card" href={N4_URL} target="_blank" rel="noopener noreferrer">
+      <a className="n4card" href="https://jlptsensei.com/" target="_blank" rel="noopener noreferrer">
         <div className="n4info">
-          <div className="ey">{ready?"You're ready 🎉":'Next level'}</div>
-          <h3>Continue to JLPT N4 <span className="arr">→</span></h3>
-          <p>You've mastered {pct}% of N5. When you're ready, N4 builds on everything here — more kanji, vocabulary and grammar.</p>
+          <div className="ey">{ready?"You're ready 🎉":'Keep going'}</div>
+          <h3>Beyond JLPT {cur.label} <span className="arr">→</span></h3>
+          <p>You've mastered {pct}% of {cur.label}. When you're ready, explore the next JLPT level's material.</p>
         </div>
-        <div className="n4badge">N4</div>
+        <div className="n4badge">{cur.label}</div>
       </a>
     </section>
   );
@@ -406,9 +568,9 @@ function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
               : (exam
                   ? (feasible
                       ? (slack>=30
-                          ? <span><b className="ontrack">✓ On track — ahead of schedule.</b> Do today's plan daily at <b>{targetNew} new/day</b> and you'll have learned all of N5 by <b>{fmtYmd(learnByDate)}</b>, well before your exam on {fmtYmd(exam)} — then keep reviewing to stay sharp.</span>
-                          : <span><b className="ontrack">✓ On track for {fmtYmd(exam)}.</b> Finish today's plan every day (<b>{targetNew} new/day</b>) and you'll know all of N5 by <b>{fmtYmd(learnByDate)}</b>, leaving <b>{slack}</b> day{slack===1?'':'s'} to review before the exam.</span>)
-                      : <span><b className="behind">⚠ That date is too soon.</b> From today, N5 needs about <b>{mDays+REVIEW_BUFFER_DAYS} days</b> (you can learn at most {NEW_PER_DAY} new per deck a day). Pick an exam date on or after <b>{fmtYmd(minDate)}</b>.</span>)
+                          ? <span><b className="ontrack">✓ On track — ahead of schedule.</b> Do today's plan daily at <b>{targetNew} new/day</b> and you'll have learned all of {LEVEL_META.label} by <b>{fmtYmd(learnByDate)}</b>, well before your exam on {fmtYmd(exam)} — then keep reviewing to stay sharp.</span>
+                          : <span><b className="ontrack">✓ On track for {fmtYmd(exam)}.</b> Finish today's plan every day (<b>{targetNew} new/day</b>) and you'll know all of {LEVEL_META.label} by <b>{fmtYmd(learnByDate)}</b>, leaving <b>{slack}</b> day{slack===1?'':'s'} to review before the exam.</span>)
+                      : <span><b className="behind">⚠ That date is too soon.</b> From today, {LEVEL_META.label} needs about <b>{mDays+REVIEW_BUFFER_DAYS} days</b> (you can learn at most {NEW_PER_DAY} new per deck a day). Pick an exam date on or after <b>{fmtYmd(minDate)}</b>.</span>)
                   : <span>At <b>{targetNew} new cards/day</b> you'll learn the remaining <b>{totalRemNew}</b> in about <b>{noExamDays} days</b>. Set a target exam date below for a plan built around it.</span>))
         }
         <div className="examrow">
@@ -420,66 +582,75 @@ function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
     </div>
   );
 }
-function Home({setView,name,prog,setGoal,toggleDaily,setExamDate}){
+function Home({setView,name,prog,setGoal,toggleDaily,setExamDate,setLevel,levelDue,user,onSignIn}){
+  const L = LEVEL_META;
   const known = prog.known||{};
   const knownCount = Object.keys(known).reduce((a,k)=>a+Object.keys(known[k]||{}).length,0);
-  const pct = Math.round(knownCount/TOTAL_CARDS*100);
+  const pct = Math.round(knownCount/Math.max(TOTAL_CARDS,1)*100);
   const dueN = dueCount(prog.srs);
-  const areas = [
-    ['Kana', (Object.keys(known.hira||{}).length+Object.keys(known.kata||{}).length), KANA_HIRA.length+KANA_KATA.length],
-    ['Kanji', Object.keys(known.kanji||{}).length, KANJI.length],
-    ['Vocabulary', Object.keys(known.vocab||{}).length, VOCAB.length],
-    ['Grammar', Object.keys(known.grammar||{}).length, GRAMMAR.length],
-  ];
-  const stats = [
-    [String(KANA_HIRA.length+KANA_KATA.length),'kana characters'],
-    [String(KANJI.length),'core kanji'],
-    [String(VOCAB.length),'vocabulary words'],
-    [String(GRAMMAR.length),'grammar points'],
-  ];
+  const areas = [].concat(
+    L.hasKana ? [['Kana', (Object.keys(known.hira||{}).length+Object.keys(known.kata||{}).length), KANA_HIRA.length+KANA_KATA.length]] : [],
+    [['Kanji', Object.keys(known.kanji||{}).length, KANJI.length],
+     ['Vocabulary', Object.keys(known.vocab||{}).length, VOCAB.length],
+     ['Grammar', Object.keys(known.grammar||{}).length, GRAMMAR.length]]
+  );
+  const stats = [].concat(
+    L.hasKana ? [[String(KANA_HIRA.length+KANA_KATA.length),'kana characters']] : [],
+    [[String(KANJI.length),'kanji'],
+     [String(VOCAB.length),'vocabulary words'],
+     [String(GRAMMAR.length),'grammar points']]
+  );
   return (
     <div>
+      {!user && <section className="wrap" style={{paddingTop:'18px'}}><GuestSyncBanner onSignIn={onSignIn}/></section>}
       <section className="hero wrap">
-        <span className="kicker">● JLPT N5 · Beginner</span>
-        <h1>Learn Japanese<br/>from <span className="jp">ゼロ</span> to N5.</h1>
-        <p>A calm, focused place to master the JLPT N5: read the reference once, then lock it in with flashcards and quizzes — with audio, and your progress synced to every device.</p>
+        <span className="kicker">● {L.tag}</span>
+        {L.id==='n5'
+          ? <h1>Learn Japanese<br/>from <span className="jp">ゼロ</span> to N5.</h1>
+          : <h1>Level up to<br/>JLPT <span className="jp">{L.label}</span>.</h1>}
+        <p>A calm, focused place to master the JLPT {L.label}: read the reference once, then lock it in with flashcards and quizzes — with audio, and your progress synced to every device.</p>
         <TodayPanel prog={prog} name={name} setView={setView} toggleDaily={toggleDaily} setExamDate={setExamDate}/>
+        <OtherLevels levelDue={levelDue} level={L.id} setLevel={setLevel}/>
         <StreakCard prog={prog} setGoal={setGoal}/>
         <div className="cta">
           {dueN>0
             ? <button className="btn primary" onClick={()=>setView('practice')}>🧠 Review {dueN} due →</button>
             : <button className="btn primary" onClick={()=>setView('practice')}>Start practicing →</button>}
-          <button className="btn ghost" onClick={()=>setView('kana')}>Browse kana</button>
+          <button className="btn ghost" onClick={()=>setView(L.hasKana?'kana':'kanji')}>Browse {L.hasKana?'kana':'kanji'}</button>
         </div>
         <div className="stat-row">{stats.map(([n,l])=>(<div className="stat" key={l}><b>{n}</b><span>{l}</span></div>))}</div>
       </section>
 
       <MasteryPanel pct={pct} known={knownCount} total={TOTAL_CARDS} areas={areas}/>
+      <ReadinessPanel prog={prog}/>
+      <WeakAreas prog={prog} setView={setView}/>
 
       <section className="block wrap">
-        <div className="shead"><div><div className="ey">How to use this</div><h2>The fastest path to N5</h2>
+        <div className="shead"><div><div className="ey">How to use this</div><h2>The fastest path to {L.label}</h2>
           <p>Reading alone is slow. The proven route is read once, then test yourself — active recall is what makes it stick.</p></div></div>
         <div className="steps">
-          <div className="step"><span className="num">1</span><div><h4>Learn the kana first</h4><p>Hiragana and katakana are the foundation. Tap any character to hear it, and drill until you can read instantly.</p></div></div>
+          {L.hasKana
+            ? <div className="step"><span className="num">1</span><div><h4>Learn the kana first</h4><p>Hiragana and katakana are the foundation. Tap any character to hear it, and drill until you can read instantly.</p></div></div>
+            : <div className="step"><span className="num">1</span><div><h4>Drill your kanji</h4><p>{L.label} adds many new kanji. Review them daily so reading stays fast and effortless.</p></div></div>}
           <div className="step"><span className="num">2</span><div><h4>Build vocabulary &amp; kanji daily</h4><p>Use the flashcards and quizzes every day. A little, often, beats cramming — and your progress follows you across devices.</p></div></div>
-          <div className="step"><span className="num">3</span><div><h4>Glue it together with grammar</h4><p>Grammar turns words into sentences. Learn the particles and core patterns, then hear them in the example sentences.</p></div></div>
+          <div className="step"><span className="num">3</span><div><h4>Glue it together with grammar</h4><p>Grammar turns words into sentences. Learn the patterns, then hear them in the example sentences.</p></div></div>
         </div>
       </section>
 
       <section className="block wrap" style={{paddingTop:0}}>
         <div className="grid-3">
-          <div className="ocard" onClick={()=>setView('kana')} style={{cursor:'pointer'}}><div className="n">あ ア</div><h3>Kana</h3><p>Complete hiragana &amp; katakana charts with romaji and audio.</p></div>
-          <div className="ocard" onClick={()=>setView('kanji')} style={{cursor:'pointer'}}><div className="n">漢字</div><h3>Kanji</h3><p>Core N5 kanji with on/kun readings, meanings, and a spoken example.</p></div>
-          <div className="ocard" onClick={()=>setView('vocab')} style={{cursor:'pointer'}}><div className="n">言葉</div><h3>Vocabulary</h3><p>Essential N5 words by theme — tap to hear each one.</p></div>
-          <div className="ocard" onClick={()=>setView('grammar')} style={{cursor:'pointer'}}><div className="n">文法</div><h3>Grammar</h3><p>Every core N5 pattern with a spoken example sentence.</p></div>
-          <div className="ocard" onClick={()=>setView('numbers')} style={{cursor:'pointer'}}><div className="n">数字</div><h3>Numbers</h3><p>Telling time, counters, money, and tricky number readings.</p></div>
+          {L.hasKana && <div className="ocard" onClick={()=>setView('kana')} style={{cursor:'pointer'}}><div className="n">あ ア</div><h3>Kana</h3><p>Complete hiragana &amp; katakana charts with romaji and audio.</p></div>}
+          <div className="ocard" onClick={()=>setView('kanji')} style={{cursor:'pointer'}}><div className="n">漢字</div><h3>Kanji</h3><p>{L.label} kanji with on/kun readings, meanings, and a spoken example.</p></div>
+          <div className="ocard" onClick={()=>setView('vocab')} style={{cursor:'pointer'}}><div className="n">言葉</div><h3>Vocabulary</h3><p>Essential {L.label} words by theme — tap to hear each one.</p></div>
+          <div className="ocard" onClick={()=>setView('grammar')} style={{cursor:'pointer'}}><div className="n">文法</div><h3>Grammar</h3><p>Every core {L.label} pattern with a spoken example sentence.</p></div>
+          {L.hasNumbers && <div className="ocard" onClick={()=>setView('numbers')} style={{cursor:'pointer'}}><div className="n">数字</div><h3>Numbers</h3><p>Telling time, counters, money, and tricky number readings.</p></div>}
           <div className="ocard" onClick={()=>setView('practice')} style={{cursor:'pointer'}}><div className="n">練習</div><h3>Flashcards</h3><p>Flip-card drills. Shuffle, listen, and mark what you know.</p></div>
           <div className="ocard" onClick={()=>setView('practice')} style={{cursor:'pointer'}}><div className="n">試験</div><h3>Quizzes</h3><p>Multiple-choice quizzes that score you and save your best.</p></div>
-          <div className="ocard" onClick={()=>setView('practice','mock')} style={{cursor:'pointer'}}><div className="n">模擬</div><h3>Mock Test</h3><p>A timed, scored mix of all five sections — see if you're ready.</p></div>
+          <div className="ocard" onClick={()=>setView('practice','mock')} style={{cursor:'pointer'}}><div className="n">模擬</div><h3>Mock Test</h3><p>A timed, scored mix of all sections — see if you're ready.</p></div>
         </div>
       </section>
 
-      <NextLevel pct={pct}/>
+      <NextLevel pct={pct} setLevel={setLevel}/>
     </div>
   );
 }
@@ -574,16 +745,20 @@ function VocabView({nav}){
 function GrammarView({nav}){
   return (
     <section className="block wrap">
-      <div className="shead"><div><div className="ey">{GRAMMAR.length} patterns</div><h2>Grammar</h2><p>The core building blocks of N5 sentences, each with a spoken example.</p></div></div>
+      <div className="shead"><div><div className="ey">{GRAMMAR.length} patterns</div><h2>Grammar</h2><p>The core building blocks of {LEVEL_META.label} sentences, each with a spoken example.</p></div></div>
       {nav && <div className="prac-cta"><span>Ready to drill grammar? Fill-in-the-blank questions test the exact particles &amp; patterns below.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','grammar')}>✦ Practice grammar →</button></div>}
       <div>
         {GRAMMAR.map((g,i)=>(
           <div className="gcard" key={i}>
-            <div className="top"><span className="pt">{g.point}</span><span className="mn">{g.meaning}</span></div>
+            <div className="top"><span className="pt">{g.point}</span><span className="mn">{g.meaning}</span>{g.diff&&<span className={cx('gdiff', g.diff==='Foundation'?'easy':(g.diff==='Intermediate'?'med':'hard'))}>{g.diff}</span>}</div>
             <div className="exp">{g.explain}</div>
+            {g.tip && <div className="gtip"><b>⚠ Watch out</b> {g.tip}</div>}
             {g.ex.map((e,j)=>(
               <div className="gex" key={j}><SpeakBtn text={e.jp} label="example sentence"/><div className="j">{e.jp}</div><div className="r">{e.romaji}</div><div className="e">{e.en}</div></div>
             ))}
+            {(g.prereq||(g.related&&g.related.length))&&(
+              <div className="grel">{g.prereq?<span className="gr-pre"><b>Builds on:</b> {g.prereq}</span>:null}{g.related&&g.related.length?<span className="gr-rel"><b>Related:</b> {g.related.join(' · ')}</span>:null}</div>
+            )}
           </div>
         ))}
       </div>
@@ -637,10 +812,10 @@ function buildDeck(id){
   if(id==='grammar') return GRAMMAR.map(g=>({front:g.point,back:g.meaning,sub:g.explain,sub2:(g.ex&&g.ex[0])?(g.ex[0].jp+' — '+g.ex[0].en):'',tag:'Grammar',fc:'jpw',say:(g.ex&&g.ex[0])?g.ex[0].jp:g.point}));
   return VOCAB.map(v=>({front:v.jp,back:v.en,sub:v.kana+' · '+v.romaji,tag:v.cat,fc:'jpw',say:v.kana}));
 }
-const DECKS = [['hira','Hiragana'],['kata','Katakana'],['kanji','Kanji'],['vocab','Vocabulary'],['grammar','Grammar']];
 function Flashcards({cp}){
-  const [deckId,setDeckId] = useState('hira');
-  const [order,setOrder] = useState(()=>buildDeck('hira'));
+  const D0 = (DECKS[0]&&DECKS[0][0]) || 'vocab';   // first deck of the active level (Hiragana on N5, Kanji on N4)
+  const [deckId,setDeckId] = useState(D0);
+  const [order,setOrder] = useState(()=>buildDeck(D0));
   const [idx,setIdx] = useState(0);
   const [flip,setFlip] = useState(false);
   const pickDeck = useCallback((id)=>{ setDeckId(id); setOrder(buildDeck(id)); setIdx(0); setFlip(false); },[]);
@@ -682,8 +857,7 @@ function buildOptions(correct, all){
   for(const a of shuffle(all)){ if(set.size>=4)break; set.add(a); }
   return shuffle([...set]);
 }
-const QUIZZES = [['kana','Kana'],['vocab','Vocab'],['kanji','Kanji'],['listen','Listening'],['grammar','Grammar']];
-const VOCAB_CATS = ['All'].concat(Array.from(new Set(VOCAB.map(function(v){return v.cat;}))));
+const MODE_SECTION = {kana:'Kana', vocab:'Vocabulary', kanji:'Kanji', listen:'Listening', grammar:'Grammar'};
 function makeQuestions(mode, cat){
   if(mode==='grammar'){
     return shuffle(GRAMMARQ).slice(0,10).map(function(it){ return {kind:'sentence', prompt:it.q, correct:it.a, options:shuffle(it.opts.slice()), explain:it.hint}; });
@@ -707,7 +881,7 @@ function makeQuestions(mode, cat){
   return shuffle(pool).slice(0,10).map(function(it){ return {kind:kind, prompt:it.p, sub:it.sub, say:it.say, correct:it.a, options:buildOptions(it.a, allA)}; });
 }
 function Quiz({cp, initialMode}){
-  const [mode,setMode]=useState(initialMode||'kana');
+  const [mode,setMode]=useState(initialMode || (QUIZZES[0]&&QUIZZES[0][0]) || 'vocab');
   const [seed,setSeed]=useState(0);
   const [i,setI]=useState(0);
   const [picked,setPicked]=useState(null);
@@ -722,7 +896,8 @@ function Quiz({cp, initialMode}){
   const restart=()=>{ setSeed(s=>s+1); setI(0); setPicked(null); setScore(0); setDone(false); };
   const changeMode=(m)=>{ setMode(m); setCat('All'); setSeed(s=>s+1); setI(0); setPicked(null); setScore(0); setDone(false); };
   const changeCat=(c)=>{ setCat(c); setSeed(s=>s+1); setI(0); setPicked(null); setScore(0); setDone(false); };
-  const choose=(opt)=>{ if(picked!==null)return; setPicked(opt); if(opt===q.correct)setScore(s=>s+1); };
+  const choose=(opt)=>{ if(picked!==null)return; setPicked(opt); const ok=opt===q.correct; if(ok)setScore(s=>s+1);
+    try{ const sec=MODE_SECTION[mode]||'Vocabulary'; cp.recordAttempt(sec, ok); if(!ok) cp.addMistake({section:sec, prompt:q.prompt, sub:q.sub||'', say:q.say||'', correct:q.correct, options:q.options, kind:q.kind}); }catch(e){} };
   const next=()=>{ if(i<N-1){ setI(i+1); setPicked(null); } else { setDone(true); cp.setBest(mode,score); } };
   const pct=Math.round(score/N*100);
   const msg=pct===100?'Perfect! 完璧です！':pct>=70?'Great work — keep going!':pct>=40?'Good start. Review and retry.':'Keep practicing — you\'ve got this.';
@@ -785,8 +960,9 @@ function CaughtUp({srsDeck, reviewed}){
   );
 }
 function Review({cp}){
-  const [deckId,setDeckId] = useState('hira');
-  const [queue,setQueue] = useState(()=>buildQueue(buildDeck('hira'), (cp.prog.srs||{}).hira||{}));
+  const D0 = (DECKS[0]&&DECKS[0][0]) || 'vocab';   // first deck of the active level
+  const [deckId,setDeckId] = useState(D0);
+  const [queue,setQueue] = useState(()=>buildQueue(buildDeck(D0), (cp.prog.srs||{})[D0]||{}));
   const [reveal,setReveal] = useState(false);
   const [reviewed,setReviewed] = useState(0);
   const pickDeck=(id)=>{ setDeckId(id); setQueue(buildQueue(buildDeck(id), (cp.prog.srs||{})[id]||{})); setReveal(false); setReviewed(0); };
@@ -851,18 +1027,21 @@ function splitSentences(text){
   if(buf) out.push({t:buf,start:start});
   return out;
 }
-function Reading(){
+function Reading({cp}){
+  // order passages easy → JLPT-style so it feels like a progression
+  const list = useMemo(function(){ return READING.slice().sort(function(a,b){ return splitSentences(a.jp).length - splitSentences(b.jp).length; }); },[]);
   const [idx,setIdx] = useState(0);
   const [picked,setPicked] = useState({});
   const [showEn,setShowEn] = useState(false);
   const [showRo,setShowRo] = useState(false);
+  const [showWords,setShowWords] = useState(false);
   const [active,setActive] = useState(-1);
-  const p = READING[idx];
+  const p = list[idx];
   const segs = useMemo(()=>splitSentences(p.jp),[idx,p.jp]);
   const runRef = useRef(0);
   const stopAudio=()=>{ runRef.current++; try{window.speechSynthesis.cancel();}catch(e){} };
   useEffect(()=>()=>stopAudio(),[]);
-  const go=(d)=>{ stopAudio(); setActive(-1); setIdx(i=>{ const n=i+d; if(n<0)return READING.length-1; if(n>=READING.length)return 0; return n; }); setPicked({}); setShowEn(false); setShowRo(false); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} };
+  const go=(d)=>{ stopAudio(); setActive(-1); setIdx(i=>{ const n=i+d; if(n<0)return list.length-1; if(n>=list.length)return 0; return n; }); setPicked({}); setShowEn(false); setShowRo(false); setShowWords(false); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} };
   // play one sentence at a time, highlighting exactly the sentence being spoken (always in sync)
   const play=()=>{
     stopAudio();
@@ -877,23 +1056,40 @@ function Reading(){
     };
     step(0);
   };
-  const pick=(qi,opt)=>{ setPicked(prev=> prev[qi]!=null ? prev : Object.assign({},prev,{[qi]:opt})); };
+  const pick=(qi,opt)=>{ if(picked[qi]!=null)return; const qq=p.q[qi]; const ok=opt===qq.a; setPicked(prev=>Object.assign({},prev,{[qi]:opt}));
+    try{ if(cp){ cp.recordAttempt('Reading', ok); if(!ok) cp.addMistake({section:'Reading', prompt:qq.q, sub:'', say:'', correct:qq.a, options:qq.opts, kind:'reading'}); } }catch(e){} };
+  const hasWords = p.vocab && p.vocab.length>0;
   return (
     <div className="quiz-wrap" style={{maxWidth:'640px'}}>
       <div className="fc-bar">
-        <span className="fc-count">Passage <b>{idx+1}</b> / {READING.length}</span>
+        <span className="fc-count">Passage <b>{idx+1}</b> / {list.length}</span>
         <span className="r-tools">
           {speechSupported && <button className="spk" aria-label="Listen to the passage" onClick={play}>🔊</button>}
           <button className={cx('swlink',showRo&&'on')} onClick={()=>setShowRo(s=>!s)}>Romaji</button>
           <button className={cx('swlink',showEn&&'on')} onClick={()=>setShowEn(s=>!s)}>English</button>
+          {hasWords && <button className={cx('swlink',showWords&&'on')} onClick={()=>setShowWords(s=>!s)}>Words</button>}
         </span>
       </div>
-      <div className="muted" style={{fontSize:'12px',margin:'0 0 12px'}}>Tap 🔊 to hear it — the line being read lights up · <b>Romaji</b> = pronunciation · <b>English</b> = meaning.</div>
+      <div className="muted" style={{fontSize:'12px',margin:'0 0 12px'}}>Tap 🔊 to hear it — the line being read lights up · <b>Romaji</b> = sound · <b>English</b> = meaning · <b>Words</b> = key vocabulary.</div>
+      {list.length>1 && (
+        <div className="rtiers">
+          {['Easy','Medium','Exam-style'].map(function(tier){
+            const items=[]; list.forEach(function(pp,k){ const n=splitSentences(pp.jp).length; const t=n<=3?'Easy':(n<=5?'Medium':'Exam-style'); if(t===tier) items.push(k); });
+            if(!items.length) return null;
+            return <div className="rtier" key={tier}><span className="rtier-lab">{tier}</span>{items.map(function(k){ return <button key={k} className={cx('rtchip', idx===k&&'on')} onClick={function(){ if(idx===k)return; stopAudio(); setActive(-1); setIdx(k); setPicked({}); setShowEn(false); setShowRo(false); setShowWords(false); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} }}>{k+1}</button>; })}</div>;
+          })}
+        </div>
+      )}
       <div className="reading-card">
-        <div className="rtitle">{p.title}</div>
+        <div className="rtitle"><span>{p.title}</span><span className={cx('rdiff', segs.length<=3?'easy':(segs.length<=5?'med':'hard'))}>{LEVEL_META.label} · {segs.length<=3?'Easy':(segs.length<=5?'Medium':'JLPT-style')}</span></div>
         <p className="rjp">{segs.map(function(s,i){ return <span key={i} className={cx('rseg',active===i&&'on')}>{s.t}</span>; })}</p>
         {showRo && <p className="rro">{p.romaji}</p>}
         {showEn && <p className="ren">{p.en}</p>}
+        {showWords && hasWords && (
+          <div className="rwords">
+            {p.vocab.map(function(v,k){ return <div className="rword" key={k}><button className="rw-w" onClick={()=>speak(v.r||v.w)}>{v.w}</button><span className="rw-r">{v.r}</span><span className="rw-m">{v.m}</span></div>; })}
+          </div>
+        )}
       </div>
       {p.q.map((qq,qi)=>(
         <div className="rq" key={qi}>
@@ -902,6 +1098,7 @@ function Reading(){
             {qq.opts.map((opt,k)=>{ const pk=picked[qi]; let st=''; if(pk!=null){ if(opt===qq.a)st='correct'; else if(opt===pk)st='wrong'; }
               return <button key={k} className={cx('opt',st)} disabled={pk!=null} onClick={()=>pick(qi,opt)}><span className="k">{String.fromCharCode(65+k)}</span>{opt}</button>; })}
           </div>
+          {picked[qi]!=null && qq.why && <div className={cx('rq-why', picked[qi]===qq.a?'ok':'no')}>{picked[qi]===qq.a?'✓ ':'✗ '}{qq.why}</div>}
         </div>
       ))}
       <div className="fc-controls"><button className="icon-btn" onClick={()=>go(-1)} title="Previous">‹</button><button className="btn" onClick={()=>go(1)}>Next passage ›</button></div>
@@ -910,15 +1107,16 @@ function Reading(){
 }
 
 /* ---------- mock test ---------- */
-const MOCK_TIME = 12*60; // seconds
+const MOCK_TIME = 12*60; // seconds (fallback if a level has no mock config)
 function buildMock(){
+  const mix = (LEVEL_META && LEVEL_META.mock && LEVEL_META.mock.mix) || {Vocabulary:6,Kanji:4,Grammar:4,Reading:3,Listening:3};
   const tag=(arr,section)=>arr.map(function(q){ q.section=section; return q; });
-  const vocab=tag(makeQuestions('vocab').slice(0,6),'Vocabulary');
-  const kanji=tag(makeQuestions('kanji').slice(0,4),'Kanji');
-  const grammar=tag(makeQuestions('grammar').slice(0,4),'Grammar');
-  const listen=tag(makeQuestions('listen').slice(0,3),'Listening');
+  const vocab=tag(makeQuestions('vocab').slice(0,mix.Vocabulary||0),'Vocabulary');
+  const kanji=tag(makeQuestions('kanji').slice(0,mix.Kanji||0),'Kanji');
+  const grammar=tag(makeQuestions('grammar').slice(0,mix.Grammar||0),'Grammar');
+  const listen=tag(makeQuestions('listen').slice(0,mix.Listening||0),'Listening');
   const rq=[]; READING.forEach(function(p){ (p.q||[]).forEach(function(qq){ rq.push({section:'Reading',kind:'reading',passage:p.jp,prompt:qq.q,options:shuffle(qq.opts.slice()),correct:qq.a}); }); });
-  const reading=shuffle(rq).slice(0,3);
+  const reading=shuffle(rq).slice(0,mix.Reading||0);
   return vocab.concat(kanji,grammar,reading,listen);
 }
 function fmtClock(s){ s=Math.max(0,s); const m=Math.floor(s/60), ss=s%60; return m+':'+(ss<10?'0':'')+ss; }
@@ -957,11 +1155,13 @@ function MockHistory({hist}){
   );
 }
 function Mock({cp}){
+  const MOCK_SECS = (LEVEL_META.mock && LEVEL_META.mock.secs) || MOCK_TIME;
+  const MOCK_COUNT = (LEVEL_META.mock && LEVEL_META.mock.mix) ? Object.keys(LEVEL_META.mock.mix).reduce(function(a,k){return a+LEVEL_META.mock.mix[k];},0) : 20;
   const [started,setStarted]=useState(false);
   const [exam,setExam]=useState([]);
   const [idx,setIdx]=useState(0);
   const [answers,setAnswers]=useState({});
-  const [timeLeft,setTimeLeft]=useState(MOCK_TIME);
+  const [timeLeft,setTimeLeft]=useState(MOCK_SECS);
   const [finished,setFinished]=useState(false);
   const [result,setResult]=useState(null);
   const [review,setReview]=useState(false);
@@ -970,17 +1170,20 @@ function Mock({cp}){
   useEffect(()=>{ examRef.current=exam; },[exam]);
   useEffect(()=>{ ansRef.current=answers; },[answers]);
 
-  const start=()=>{ doneRef.current=false; setExam(buildMock()); setIdx(0); setAnswers({}); setTimeLeft(MOCK_TIME); setFinished(false); setResult(null); setReview(false); setStarted(true); };
+  const start=()=>{ doneRef.current=false; setExam(buildMock()); setIdx(0); setAnswers({}); setTimeLeft(MOCK_SECS); setFinished(false); setResult(null); setReview(false); setStarted(true); };
   const finish=useCallback(()=>{
     if(doneRef.current) return; doneRef.current=true;
     const ex=examRef.current, ans=ansRef.current;
-    let correct=0; const bySec={};
-    ex.forEach(function(q,k){ const ok=ans[k]===q.correct; if(ok)correct++; const s=q.section; bySec[s]=bySec[s]||{c:0,t:0}; bySec[s].t++; if(ok)bySec[s].c++; });
+    let correct=0; const bySec={}; const attempts=[]; const misses=[];
+    ex.forEach(function(q,k){ const ok=ans[k]===q.correct; if(ok)correct++; const s=q.section; bySec[s]=bySec[s]||{c:0,t:0}; bySec[s].t++; if(ok)bySec[s].c++;
+      attempts.push({section:s, ok:ok});
+      if(!ok && ans[k]!=null) misses.push({section:s, prompt:(q.prompt||q.say||''), sub:q.sub||'', say:q.say||'', correct:q.correct, options:q.options, kind:q.kind});
+    });
     const N=ex.length||1; const pct=Math.round(correct/N*100);
     setResult({correct:correct,N:ex.length,pct:pct,pass:pct>=60,bySec:bySec});
     setFinished(true);
-    try{ cp.addMockResult(correct, ex.length); }catch(e){}
-  },[cp]);
+    try{ cp.addMockResult(correct, ex.length); cp.recordBatch(attempts, misses); }catch(e){}
+  },[cp,MOCK_SECS]);
 
   useEffect(()=>{
     if(!started || finished) return;
@@ -997,9 +1200,9 @@ function Mock({cp}){
       <div className="quiz-wrap" style={{maxWidth:'560px'}}>
         <div className="qcard" style={{textAlign:'center'}}>
           <div style={{fontSize:'42px',lineHeight:1}}>📝</div>
-          <h3 style={{fontSize:'23px',margin:'12px 0 6px'}}>Mock N5 Test</h3>
-          <p className="muted" style={{fontSize:'14px',maxWidth:'430px',margin:'0 auto 6px'}}>20 mixed questions — vocabulary, kanji, grammar, reading and listening — in {Math.round(MOCK_TIME/60)} minutes. Like the real exam, you only see your score at the end.</p>
-          {best>0 && <div className="score-pill" style={{display:'block',margin:'8px 0 16px'}}>Your best: <b>{best}</b> / 20</div>}
+          <h3 style={{fontSize:'23px',margin:'12px 0 6px'}}>Mock {LEVEL_META.label} Test</h3>
+          <p className="muted" style={{fontSize:'14px',maxWidth:'430px',margin:'0 auto 6px'}}>{MOCK_COUNT} mixed questions — vocabulary, kanji, grammar, reading and listening — in {Math.round(MOCK_SECS/60)} minutes. Like the real exam, you only see your score at the end.</p>
+          {best>0 && <div className="score-pill" style={{display:'block',margin:'8px 0 16px'}}>Your best: <b>{best}</b> / {MOCK_COUNT}</div>}
           <button className="btn primary" onClick={start}>Start test →</button>
         </div>
         <MockHistory hist={cp.prog.mockHistory}/>
@@ -1014,7 +1217,7 @@ function Mock({cp}){
           <div className="result">
             <div className="pct">{result.pct}%</div>
             <div className="msg">{result.pass?'🎉 Pass! (estimated)':'Keep studying — almost there.'}</div>
-            <div className="score-pill" style={{display:'block',marginBottom:16}}>Score <b>{result.correct}</b> / {result.N}　·　Best <b>{Math.max(best,result.correct)}</b> / 20</div>
+            <div className="score-pill" style={{display:'block',marginBottom:16}}>Score <b>{result.correct}</b> / {result.N}　·　Best <b>{Math.max(best,result.correct)}</b> / {MOCK_COUNT}</div>
           </div>
           <div className="msec">
             {Object.keys(result.bySec).map(function(s){ const o=result.bySec[s]; return <div className="msec-row" key={s}><span>{s}</span><span><b>{o.c}</b> / {o.t}</span></div>; })}
@@ -1075,11 +1278,62 @@ function Mock({cp}){
   );
 }
 
+/* ---------- mistake review ---------- */
+function MistakeReview({cp}){
+  const all = cp.prog.mistakes || [];
+  const [queue] = useState(()=>shuffle(all.slice()));   // snapshot for this session
+  const [i,setI] = useState(0);
+  const [picked,setPicked] = useState(null);
+  const [cleared,setCleared] = useState(0);
+  const item = queue[i];
+  if(!queue.length) return (
+    <div className="quiz-wrap" style={{maxWidth:'560px'}}><div className="qcard" style={{textAlign:'center'}}>
+      <div style={{fontSize:'44px',lineHeight:1}}>✨</div>
+      <h3 style={{fontSize:'21px',margin:'10px 0 4px'}}>No mistakes to review</h3>
+      <p className="muted" style={{fontSize:'14px',maxWidth:'420px',margin:'0 auto'}}>Wrong answers from quizzes, reading and mock tests collect here so you can re-drill exactly what you missed. Go get a few "wrong" — then come back.</p>
+    </div></div>
+  );
+  if(!item) return (
+    <div className="quiz-wrap" style={{maxWidth:'560px'}}><div className="qcard"><div className="result">
+      <div style={{fontSize:'46px',lineHeight:1}}>🎉</div>
+      <h3 style={{fontSize:'22px',margin:'10px 0 0'}}>Mistakes session done!</h3>
+      <div className="msg">You cleared <b>{cleared}</b> of {queue.length}. Cleared ones are gone for good; any you missed stay for next time.</div>
+    </div></div></div>
+  );
+  const reveal = picked!==null;
+  const opts = (item.options && item.options.length>1) ? item.options : buildOptions(item.correct,[item.correct]);
+  const key = (item.section||'')+'|'+item.prompt+'|'+item.correct;
+  const choose=(opt)=>{ if(reveal)return; setPicked(opt); if(opt===item.correct){ try{cp.clearMistake(key);}catch(e){} setCleared(c=>c+1); } };
+  const next=()=>{ setPicked(null); setI(i+1); };
+  return (
+    <div className="quiz-wrap">
+      <div className="fc-bar"><span className="fc-count">Mistake <b>{i+1}</b> / {queue.length}</span><span className="fc-count">{item.section}　·　Cleared <b>{cleared}</b></span></div>
+      <div className="pbar" style={{marginBottom:18}}><i style={{width:(i/queue.length*100)+'%'}}/></div>
+      <div className="qcard">
+        <div className="q-prompt">
+          <div className="lbl">{item.kind==='audio'?'Listen, then choose the meaning':(item.kind==='reading'?'Reading question':'Choose the correct answer')}</div>
+          {item.kind==='audio'
+            ? <button className="spk lg" style={{margin:'10px auto 4px'}} aria-label="Play audio" onClick={()=>speak(item.say)}>🔊</button>
+            : <div className={item.kind==='reading'?'med':'big'} style={item.kind==='reading'?{fontSize:'clamp(16px,3vw,20px)'}:{}}>{item.prompt}</div>}
+          {item.say && item.kind!=='audio' && speechSupported && <button className="spk lg" style={{margin:'12px auto 0'}} aria-label="Listen" onClick={()=>speak(item.say)}>🔊</button>}
+        </div>
+        <div className="opts">
+          {opts.map(function(opt,k){ let st=''; if(reveal){ if(opt===item.correct)st='correct'; else if(opt===picked)st='wrong'; } return <button key={k} className={cx('opt',st)} disabled={reveal} onClick={()=>choose(opt)}><span className="k">{String.fromCharCode(65+k)}</span>{opt}</button>; })}
+        </div>
+        <div className={cx('feedback',reveal&&(picked===item.correct?'ok':'no'))}>{reveal?(picked===item.correct?'Correct — cleared from your mistakes ✓':'Answer: '+item.correct+' · kept for next time'):''}</div>
+        <div className="q-foot"><span className="score-pill">{queue.length-cleared} left</span><button className="btn primary" disabled={!reveal} onClick={next}>{i<queue.length-1?'Next →':'Finish'}</button></div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- practice ---------- */
 function Practice({cp, tool, setTool, quizMode}){
   const t = tool||'review';
-  const blurb = t==='mock' ? 'A timed, scored exam that mixes all five sections — see if you\'re ready for the real N5.'
-    : t==='reading' ? 'Read short N5 texts and answer the questions — just like the exam\'s reading section.'
+  const mistakeCount = (cp.prog.mistakes||[]).length;
+  const blurb = t==='mistakes' ? 'Re-drill exactly what you got wrong in quizzes, reading and mock tests — until you get it right.'
+    : t==='mock' ? ('A timed, scored exam that mixes every section — see if you\'re ready for the real '+LEVEL_META.label+'.')
+    : t==='reading' ? ('Read short '+LEVEL_META.label+' texts and answer the questions — just like the exam\'s reading section.')
     : t==='quiz' ? 'Quiz yourself on kana, vocab, kanji, listening, and grammar — all scored and synced.'
     : t==='cards' ? 'Free, unlimited flip-through of any deck — browse at your own pace.'
     : 'Smart review schedules every card for you — hard ones return sooner, easy ones later. Synced to your account.';
@@ -1092,54 +1346,36 @@ function Practice({cp, tool, setTool, quizMode}){
         <button className={cx(t==='quiz'&&'on')} onClick={()=>setTool('quiz')}>✦ Quiz</button>
         <button className={cx(t==='reading'&&'on')} onClick={()=>setTool('reading')}>📖 Reading</button>
         <button className={cx(t==='mock'&&'on')} onClick={()=>setTool('mock')}>📝 Mock</button>
+        <button className={cx(t==='mistakes'&&'on')} onClick={()=>setTool('mistakes')}>⚠ Mistakes{mistakeCount?(' '+mistakeCount):''}</button>
       </div></div>
-      {t==='quiz'?<Quiz key={'q-'+(quizMode||'')} cp={cp} initialMode={quizMode}/>:t==='cards'?<Flashcards cp={cp}/>:t==='reading'?<Reading/>:t==='mock'?<Mock cp={cp}/>:<Review cp={cp}/>}
+      {t==='quiz'?<Quiz key={'q-'+(quizMode||'')} cp={cp} initialMode={quizMode}/>:t==='cards'?<Flashcards cp={cp}/>:t==='reading'?<Reading cp={cp}/>:t==='mock'?<Mock cp={cp}/>:t==='mistakes'?<MistakeReview cp={cp}/>:<Review cp={cp}/>}
     </section>
   );
 }
 
-/* ---------- auth screen ---------- */
-function authErr(e){
-  const c=(e&&e.code)||'';
-  if(c.indexOf('email-already-in-use')>=0) return 'That email already has an account — try signing in.';
-  if(c.indexOf('invalid-credential')>=0||c.indexOf('wrong-password')>=0||c.indexOf('user-not-found')>=0) return 'Email or password is incorrect.';
-  if(c.indexOf('invalid-email')>=0) return 'That email address looks invalid.';
-  if(c.indexOf('weak-password')>=0) return 'Password must be at least 6 characters.';
-  if(c.indexOf('too-many-requests')>=0) return 'Too many attempts — wait a moment and try again.';
-  if(c.indexOf('network')>=0) return 'Network error — check your connection.';
-  return (e&&e.message)||'Something went wrong. Please try again.';
-}
-function AuthScreen(){
-  const [mode,setMode] = useState('signin');
-  const [email,setEmail] = useState('');
-  const [pass,setPass] = useState('');
-  const [err,setErr] = useState('');
-  const [busy,setBusy] = useState(false);
-  const submit = ()=>{
-    setErr('');
-    if(!cloud.ok){ setErr('Sign-in is unavailable — check your internet connection.'); return; }
-    if(!email||!pass){ setErr('Enter your email and password.'); return; }
-    if(mode==='signup'&&pass.length<6){ setErr('Password must be at least 6 characters.'); return; }
-    setBusy(true);
-    const op = mode==='signup' ? cloud.signUp(email.trim(),pass) : cloud.signIn(email.trim(),pass);
-    op.catch(e=>{ setErr(authErr(e)); setBusy(false); });
-  };
+/* ---------- sign-in (optional Google sync) ---------- */
+function GoogleBtn({onSignIn, label, full}){
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState('');
+  const go=()=>{ setErr(''); setBusy(true); try{ const op=onSignIn(); if(op&&op.then) op.then(function(){setBusy(false);}).catch(function(e){ setBusy(false); setErr((e&&e.code&&e.code.indexOf('popup')>=0)?'Sign-in was cancelled.':'Could not sign in — check your connection.'); }); else setBusy(false); }catch(e){ setBusy(false); setErr('Sign-in is unavailable right now.'); } };
   return (
-    <div className="login">
-      <div className="login-card">
-        <div className="mark">五</div>
-        <h2>{mode==='signup'?'Create your account':'Sign in'}</h2>
-        <div className="sub">{mode==='signup'?'Sign up to sync your N5 progress across every device.':'Welcome back — your progress is waiting.'}</div>
-        <div className="field"><label>Email</label><input className="inp" type="email" autoComplete="email" value={email} placeholder="you@example.com" onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()}/></div>
-        <div className="field"><label>Password{mode==='signup'?' — at least 6 characters':''}</label><input className="inp" type="password" autoComplete={mode==='signup'?'new-password':'current-password'} value={pass} placeholder="••••••••" onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()}/></div>
-        <button className="btn primary" disabled={busy} onClick={submit}>{busy?'Please wait…':(mode==='signup'?'Create account →':'Sign in →')}</button>
-        <div className="login-err">{err}</div>
-        <div className="login-foot">
-          {mode==='signup'
-            ? <span className="muted" style={{fontSize:'13.5px'}}>Already have an account? <button className="swlink" onClick={()=>{setMode('signin');setErr('');}}>Sign in</button></span>
-            : <span className="muted" style={{fontSize:'13.5px'}}>New here? <button className="swlink" onClick={()=>{setMode('signup');setErr('');}}>Create an account</button></span>}
-        </div>
-        <div className="save-note"><span>☁</span><span>Your progress is saved to your account and synced across every device. An account and an internet connection are required.</span></div>
+    <React.Fragment>
+      <button className={cx('gbtn',full&&'full')} disabled={busy} onClick={go}>
+        <span className="gico" aria-hidden="true">G</span>{busy?'Opening Google…':(label||'Continue with Google')}
+      </button>
+      {err && <div className="login-err" style={{marginTop:8}}>{err}</div>}
+    </React.Fragment>
+  );
+}
+function GuestSyncBanner({onSignIn}){
+  const [hidden,setHidden]=useState(function(){ return !!lsGet('nihongo_sync_dismissed'); });
+  if(hidden) return null;
+  return (
+    <div className="syncbanner">
+      <div className="sb-text"><b>You're studying as a guest.</b> Your progress is saved on this device. Sign in to save it permanently and sync across your phone and computer.</div>
+      <div className="sb-actions">
+        <GoogleBtn onSignIn={onSignIn} label="Save my progress"/>
+        <button className="swlink" onClick={()=>{ lsSet('nihongo_sync_dismissed',1); setHidden(true); }}>Maybe later</button>
       </div>
     </div>
   );
@@ -1147,7 +1383,7 @@ function AuthScreen(){
 
 /* ---------- splash / cloud error ---------- */
 function Splash(){
-  return <div className="login"><div className="login-card" style={{textAlign:'center'}}><div className="mark" style={{margin:'0 auto 20px'}}>五</div><h2>N5 日本語</h2><div className="sub">Loading…</div></div></div>;
+  return <div className="login"><div className="login-card" style={{textAlign:'center'}}><div className="mark" style={{margin:'0 auto 20px'}}>語</div><h2>日本語</h2><div className="sub">Loading…</div></div></div>;
 }
 function CloudError(){
   return (
@@ -1161,56 +1397,84 @@ function CloudError(){
 }
 
 /* ---------- app shell ---------- */
-function App({user,onSignOut}){
+function App({user,onSignIn,onSignOut}){
   const [route,navigate] = useHashRoute();
   const view = route.view;
-  const cp = useCloudProgress(user.uid);
-  useEffect(()=>{ try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} },[view]);
+  const [level,setLevelState] = useState('n5');
+  const switchedRef = useRef(false);
+  const cp = useCloudProgress(user, level);
+  const name = user ? user.name : 'there';
+  setActiveLevel(level); // swap the active level's content in before children read it
+  // resume the level the user was last on (works for local guest doc + cloud doc once it loads)
+  useEffect(()=>{ if(cp.activeLevel && cp.activeLevel!==level && !switchedRef.current){ switchedRef.current=true; setLevelState(cp.activeLevel); } },[cp.activeLevel]);
+  const setLevel=(lv)=>{ if(lv===level)return; switchedRef.current=true; setLevelState(lv); cp.setLevelPref(lv); try{ if(view!=='home') navigate('home'); }catch(e){} try{window.scrollTo({top:0});}catch(e){} };
+  useEffect(()=>{ try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} },[view,level]);
   useEffect(()=>{ if(!speechSupported)return; const w=()=>warmSpeech(); window.addEventListener('pointerdown',w,{once:true}); return ()=>{ try{window.removeEventListener('pointerdown',w);}catch(e){} }; },[]);
-  if(!cp.loaded) return <Splash/>;
+  // some views don't exist for every level (no kana/numbers at N4) — fall back to home
+  const allowed = view==='home'||view==='kanji'||view==='vocab'||view==='grammar'||view==='practice'||(view==='kana'&&LEVEL_META.hasKana)||(view==='numbers'&&LEVEL_META.hasNumbers);
+  const v = allowed ? view : 'home';
   return (
     <div className="app">
-      <Nav view={view} navigate={navigate} user={user} onSignOut={onSignOut} syncState={cp.syncState}/>
-      <main className="main">
-        {view==='home' && <Home setView={navigate} name={user.name} prog={cp.prog} setGoal={cp.setGoal} toggleDaily={cp.toggleDaily} setExamDate={cp.setExamDate}/>}
-        {view==='kana' && <KanaView nav={navigate}/>}
-        {view==='kanji' && <KanjiView nav={navigate}/>}
-        {view==='vocab' && <VocabView nav={navigate}/>}
-        {view==='grammar' && <GrammarView nav={navigate}/>}
-        {view==='numbers' && <NumbersView/>}
-        {view==='practice' && <Practice cp={cp} tool={route.sub||'review'} setTool={(x)=>navigate('practice', x==='review'?'':x)} quizMode={route.sub2}/>}
+      <Nav view={v} navigate={navigate} user={user} onSignIn={onSignIn} onSignOut={onSignOut} syncState={cp.syncState} level={level} setLevel={setLevel}/>
+      <main className="main" key={level}>
+        {v==='home' && <Home setView={navigate} name={name} prog={cp.prog} setGoal={cp.setGoal} toggleDaily={cp.toggleDaily} setExamDate={cp.setExamDate} setLevel={setLevel} levelDue={cp.levelDue} user={user} onSignIn={onSignIn}/>}
+        {v==='kana' && <KanaView nav={navigate}/>}
+        {v==='kanji' && <KanjiView nav={navigate}/>}
+        {v==='vocab' && <VocabView nav={navigate}/>}
+        {v==='grammar' && <GrammarView nav={navigate}/>}
+        {v==='numbers' && <NumbersView/>}
+        {v==='practice' && <Practice cp={cp} tool={route.sub||'review'} setTool={(x)=>navigate('practice', x==='review'?'':x)} quizMode={route.sub2}/>}
       </main>
-      <footer className="foot"><div className="jp">頑張って！</div><div style={{marginTop:6}}>Built for JLPT N5 learners · Read, listen, then recall.</div></footer>
-      <BottomNav view={view} navigate={navigate}/>
+      <footer className="foot"><div className="jp">頑張って！</div><div style={{marginTop:6}}>Built for JLPT {LEVEL_META.label} learners · Read, listen, then recall.</div></footer>
+      <BottomNav view={v} navigate={navigate}/>
     </div>
   );
 }
 
-/* ---------- root (auth gate) ---------- */
-function Root(){
-  const [user,setUser] = useState(undefined); // undefined = still loading
-  const [fail,setFail] = useState(false);
+/* ---------- error boundary (a render crash shows a recovery screen, never a blank page) ---------- */
+class ErrorBoundary extends React.Component{
+  constructor(p){ super(p); this.state={err:false}; }
+  static getDerivedStateFromError(){ return {err:true}; }
+  componentDidCatch(e){ try{ console.error(e); }catch(x){} }
+  render(){
+    if(this.state.err){
+      return (
+        <div className="login"><div className="login-card" style={{textAlign:'center'}}>
+          <div className="mark" style={{margin:'0 auto 20px'}}>⚠</div>
+          <h2>Something went wrong</h2>
+          <div className="sub">The app hit an unexpected error. Your saved progress is safe in your account — reloading usually fixes it.</div>
+          <button className="btn primary" style={{marginTop:18}} onClick={function(){ try{window.location.reload();}catch(e){} }}>Reload app</button>
+          <div className="login-foot"><button className="swlink" onClick={function(){ try{ if(cloud&&cloud.ok)cloud.signOut(); }catch(e){} try{window.location.reload();}catch(e){} }}>Sign out and reload</button></div>
+        </div></div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/* ---------- root (guest-first; Google sign-in is optional sync, never a gate) ---------- */
+function RootApp(){
+  const [user,setUser] = useState(null); // null = guest (default — app works immediately)
   useEffect(()=>{
     let alive=true, unsub=null, tries=0;
     const begin=()=>{
       cloud.init();
-      if(!cloud.ok){ if(alive) setFail(true); return; }
-      unsub = cloud.onAuth(function(fu){ if(alive) setUser(fu ? {uid:fu.uid, email:fu.email, name:(fu.email||'You').split('@')[0]} : null); });
+      if(!cloud.ok) return;  // no Firebase → stay guest (local only), no error screen
+      unsub = cloud.onAuth(function(fu){ if(alive) setUser(fu ? {uid:fu.uid, email:fu.email||'', name:(fu.displayName||fu.email||'You').split('@')[0]} : null); });
     };
     const tick=()=>{
       if(!alive) return;
-      if(cloud.ready()){ begin(); return; }       // wait until the SDK is available
-      if(tries++ > 240){ if(alive) setFail(true); return; }   // ~12s, then show guidance
+      if(cloud.ready()){ begin(); return; }
+      if(tries++ > 240) return;   // give up waiting for the SDK; guest still works
       setTimeout(tick, 50);
     };
     tick();
     return ()=>{ alive=false; if(unsub){ try{unsub();}catch(e){} } };
   },[]);
-  if(fail) return <CloudError/>;           // Firebase couldn't load (offline / blocked preview)
-  if(user===undefined) return <Splash/>;   // loading
-  if(!user) return <AuthScreen/>;          // login required
+  const signIn = ()=>{ try{ if(!cloud.ok) cloud.init(); if(cloud.ok) return cloud.signInGoogle(); }catch(e){ return Promise.reject(e); } return Promise.reject(new Error('Sign-in unavailable')); };
   const signOut = ()=>{ try{ cloud.signOut(); }catch(e){} setUser(null); };
-  return <App key={user.uid} user={user} onSignOut={signOut}/>;
+  return <App key={user?user.uid:'guest'} user={user} onSignIn={signIn} onSignOut={signOut}/>;
 }
+function Root(){ return <ErrorBoundary><RootApp/></ErrorBoundary>; }
 
 export { Root };

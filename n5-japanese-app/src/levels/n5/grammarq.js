@@ -1,5 +1,5 @@
 // (data file) JLPT N5 grammar & particle cloze questions. ＿ = blank. a = correct (must be in opts)
-var GRAMMARQ = [
+var N5_GRAMMARQ = [
   {q:'わたし＿ がくせいです。',opts:['は','が','を','に'],a:'は',hint:'topic marker は'},
   {q:'本＿ よみます。',opts:['を','に','が','で'],a:'を',hint:'direct object を'},
   {q:'しちじ＿ おきます。',opts:['に','を','で','へ'],a:'に',hint:'point in time に'},
@@ -50,4 +50,4 @@ var GRAMMARQ = [
   {q:'しゅくだいを します。＿、ねます。',opts:['それから','でも','より','しか'],a:'それから',hint:'それから (after that)'}
 ];
 
-export { GRAMMARQ };
+export { N5_GRAMMARQ };

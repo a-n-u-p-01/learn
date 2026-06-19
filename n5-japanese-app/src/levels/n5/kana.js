@@ -1,5 +1,5 @@
 // JLPT N5 Kana data (Hiragana + Katakana)
-var KANA = {
+var N5_KANA = {
   hiragana: {
     base: [
       {k:'あ',r:'a'},{k:'い',r:'i'},{k:'う',r:'u'},{k:'え',r:'e'},{k:'お',r:'o'},
@@ -70,4 +70,4 @@ var KANA = {
   }
 };
 
-export { KANA };
+export { N5_KANA };

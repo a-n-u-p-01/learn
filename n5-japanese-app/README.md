@@ -39,7 +39,10 @@ src/
   app.jsx              the whole app (components, routing, SRS, cloud sync)
   styles.css           dark theme
   firebase-config.js   your Firebase client config
-  data/                kana, kanji, vocab, grammar, grammar quiz, reading, numbers
+  levels/
+    registry.js        lists every JLPT level (add N3/N2/N1 here)
+    n5/                N5 content: kana, kanji, vocab, grammar, grammar quiz, reading, numbers
+    n4/                N4 content: kanji, vocab, grammar, grammar quiz, reading
 ```
 
 ## Use your own Firebase project
