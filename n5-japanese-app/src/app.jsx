@@ -802,8 +802,10 @@ function KanaView({nav}){
 
 export default function KanjiView({ nav }) {
   const [q, setQ] = useState('');
-  const [displayList, setDisplayList] = useState([]);
-  const loadTimer = useRef(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const gridRef = useRef(null);
+  const PAGE_KEY = 'kanji_page';
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -819,16 +821,77 @@ export default function KanjiView({ nav }) {
     );
   }, [q]);
 
-  // ✅ Incremental render effect (keeps everything instant)
+  // ✅ Responsive items-per-page
   useEffect(() => {
-    clearTimeout(loadTimer.current);
-    // Show first 20 instantly, append the rest after 300ms
-    setDisplayList(list.slice(0, 20));
-    loadTimer.current = setTimeout(() => {
-      setDisplayList(list);
-    }, 300);
-    return () => clearTimeout(loadTimer.current);
-  }, [list]);
+    const updateItemsPerPage = () => {
+      setItemsPerPage(window.innerWidth <= 760 ? 7 : 21);
+    };
+    updateItemsPerPage();
+    window.addEventListener('resize', updateItemsPerPage);
+    return () => window.removeEventListener('resize', updateItemsPerPage);
+  }, []);
+
+  // ✅ 1. Remember last page (load on mount, save on change)
+  useEffect(() => {
+    const saved = parseInt(localStorage.getItem(PAGE_KEY), 10);
+    const maxPage = Math.ceil(list.length / itemsPerPage) || 1;
+    if (saved && saved >= 1 && saved <= maxPage) {
+      setCurrentPage(saved);
+    } else {
+      setCurrentPage(1);
+    }
+  }, [list, itemsPerPage]);
+
+  useEffect(() => {
+    localStorage.setItem(PAGE_KEY, String(currentPage));
+  }, [currentPage]);
+
+  // ✅ Pagination math & Context
+  const totalPages = Math.ceil(list.length / itemsPerPage) || 1;
+  const paginatedList = list.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+  const startIdx = (currentPage - 1) * itemsPerPage + 1;
+  const endIdx = Math.min(currentPage * itemsPerPage, list.length);
+
+  // ✅ 2. Scroll to top on every page change
+  const goToPage = (page) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    setCurrentPage(page);
+    setTimeout(() => {
+      if (gridRef.current) {
+        gridRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 50);
+  };
+
+  // ✅ 4. Helper for page number buttons (with ellipsis)
+  const getVisiblePages = (current, total) => {
+    const delta = 2;
+    const range = [];
+    const rangeWithDots = [];
+    let l;
+
+    for (let i = 1; i <= total; i++) {
+      if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {
+        range.push(i);
+      }
+    }
+
+    for (let i of range) {
+      if (l) {
+        if (i - l === 2) {
+          rangeWithDots.push(l + 1);
+        } else if (i - l !== 1) {
+          rangeWithDots.push('...');
+        }
+      }
+      rangeWithDots.push(i);
+      l = i;
+    }
+    return rangeWithDots;
+  };
 
   return (
     <section className="block wrap">
@@ -882,11 +945,10 @@ export default function KanjiView({ nav }) {
         </div>
       )}
 
-      {/* Main layout track container */}
-      <div className="kanji-grid-container">
+      {/* ✅ Attach ref here for precise scroll-to-top on every page change */}
+      <div className="kanji-grid-container" ref={gridRef} style={{ scrollMarginTop: '84px' }}>
         <div className="kanji-grid">
-          {/* ✅ CHANGED: map over displayList instead of the full list */}
-          {displayList.map((k, i) => (
+          {paginatedList.map((k, i) => (
             <div className="kj" key={k.c + i}>
               <div className="big">{k.c}</div>
               <div className="mean">{k.mean}</div>
@@ -946,6 +1008,47 @@ export default function KanjiView({ nav }) {
           No kanji match "{q}".
         </p>
       )}
+
+      {/* ✅ 3 & 4: Pagination with Range + Number Buttons */}
+      {totalPages > 1 && (
+        <div className="pagination" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '20px' }}>
+          <button 
+            className="btn sm" 
+            disabled={currentPage === 1} 
+            onClick={() => goToPage(currentPage - 1)}
+          >
+            ‹ Prev
+          </button>
+          
+          {getVisiblePages(currentPage, totalPages).map((item, idx) => (
+            item === '...' ? (
+              <span key={`dots-${idx}`} className="muted" style={{ fontSize: '13px', padding: '0 6px' }}>…</span>
+            ) : (
+              <button
+                key={item}
+                className={cx('btn sm', currentPage === item && 'primary')}
+                onClick={() => goToPage(item)}
+                style={currentPage === item ? { padding: '8px 14px' } : { padding: '8px 14px', background: 'transparent' }}
+              >
+                {item}
+              </button>
+            )
+          ))}
+
+          <button 
+            className="btn sm" 
+            disabled={currentPage === totalPages} 
+            onClick={() => goToPage(currentPage + 1)}
+          >
+            Next ›
+          </button>
+
+          {/* Show Range */}
+          <div className="muted" style={{ width: '100%', textAlign: 'center', fontSize: '12px', marginTop: '8px' }}>
+            Showing <strong style={{ color: 'var(--fg)' }}>{startIdx}–{endIdx}</strong> of {list.length} characters
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -959,8 +1062,8 @@ function VocabView({ nav }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 20;
+  const PAGE_KEY = 'vocab_page';
 
-  // ✅ 1. Create a ref for the table
   const tableRef = useRef(null);
 
   // ✅ Search + Category filter
@@ -978,17 +1081,67 @@ function VocabView({ nav }) {
     return items;
   }, [cat, searchQuery]);
 
-  // ✅ Reset page whenever search or category changes
+  // ✅ 1. Remember last page (load on mount, save on change)
   useEffect(() => {
-    setCurrentPage(1);
+    const saved = parseInt(localStorage.getItem(PAGE_KEY), 10);
+    const maxPage = Math.ceil(list.length / ITEMS_PER_PAGE) || 1;
+    if (saved && saved >= 1 && saved <= maxPage) {
+      setCurrentPage(saved);
+    } else {
+      setCurrentPage(1);
+    }
   }, [list]);
 
-  // ✅ Pagination logic
+  useEffect(() => {
+    localStorage.setItem(PAGE_KEY, String(currentPage));
+  }, [currentPage]);
+
+  // ✅ Pagination math & Context
   const totalPages = Math.ceil(list.length / ITEMS_PER_PAGE) || 1;
   const paginatedList = list.slice(
     (currentPage - 1) * ITEMS_PER_PAGE, 
     currentPage * ITEMS_PER_PAGE
   );
+  const startIdx = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const endIdx = Math.min(currentPage * ITEMS_PER_PAGE, list.length);
+
+  // ✅ 2. Scroll to top on every page change
+  const goToPage = (page) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    setCurrentPage(page);
+    setTimeout(() => {
+      if (tableRef.current) {
+        tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 50);
+  };
+
+  // ✅ 4. Helper for page number buttons (with ellipsis)
+  const getVisiblePages = (current, total) => {
+    const delta = 2;
+    const range = [];
+    const rangeWithDots = [];
+    let l;
+
+    for (let i = 1; i <= total; i++) {
+      if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {
+        range.push(i);
+      }
+    }
+
+    for (let i of range) {
+      if (l) {
+        if (i - l === 2) {
+          rangeWithDots.push(l + 1);
+        } else if (i - l !== 1) {
+          rangeWithDots.push('...');
+        }
+      }
+      rangeWithDots.push(i);
+      l = i;
+    }
+    return rangeWithDots;
+  };
 
   const toggleRow = (id) => {
     setExpandedRows(prev => ({
@@ -1017,7 +1170,8 @@ function VocabView({ nav }) {
       {nav && (
         <div className="prac-cta" >
           <span>Turn reading into recall — quiz yourself on these words.</span>
-          <button className="btn primary sm" ref={tableRef} onClick={() => nav('practice', 'quiz', 'vocab')}>
+          {/* 🔥 Removed ref from this button */}
+          <button className="btn primary sm" onClick={() => nav('practice', 'quiz', 'vocab')}>
             ✦ Practice vocab →
           </button>
         </div>
@@ -1031,109 +1185,120 @@ function VocabView({ nav }) {
         ))}
       </div>
 
-      {/* ✅ 2. Attach the ref to the vtable */}
-      <div className="vtable">
-        <div className="vhead">
-          <span className="vhead-control"></span>
-          <span>Japanese</span>
-          <span>Romaji</span>
-          <span>Meaning</span>
-        </div>
+      {/* ✅ Fixed: Wrapped vtable and added ref for precise scroll-to-top */}
+      <div ref={tableRef} style={{ scrollMarginTop: '84px' }}>
+        <div className="vtable">
+          <div className="vhead">
+            <span className="vhead-control"></span>
+            <span>Japanese</span>
+            <span>Romaji</span>
+            <span>Meaning</span>
+          </div>
 
-        {paginatedList.map((v, i) => {
-          const rowId = v.jp + i;
-          const isExpanded = !!expandedRows[rowId];
+          {paginatedList.map((v, i) => {
+            const rowId = v.jp + i;
+            const isExpanded = !!expandedRows[rowId];
 
-          return (
-            <div 
-              className={cx('vrow-group', isExpanded && 'is-expanded')} 
-              key={rowId}
-            >
+            return (
               <div 
-                className="vrow" 
-                onClick={() => toggleRow(rowId)}
-                role="button"
-                aria-expanded={isExpanded}
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    toggleRow(rowId);
-                  }
-                }}
+                className={cx('vrow-group', isExpanded && 'is-expanded')} 
+                key={rowId}
               >
-                <div className="vcol-control">
-                  <span className="v-chevron-icon" aria-hidden="true" />
-                </div>
-                <div className="jp">
-                  {v.jp}
-                  <small>{v.kana}</small>
-                </div>
-                <div className="ro">{v.romaji}</div>
-                <div className="en">
-                  <div className="en-wrap">
-                    <span>{v.en}</span>
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <SpeakBtn text={v.kana} label={v.en} />
+                <div 
+                  className="vrow" 
+                  onClick={() => toggleRow(rowId)}
+                  role="button"
+                  aria-expanded={isExpanded}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      toggleRow(rowId);
+                    }
+                  }}
+                >
+                  <div className="vcol-control">
+                    <span className="v-chevron-icon" aria-hidden="true" />
+                  </div>
+                  <div className="jp">
+                    {v.jp}
+                    <small>{v.kana}</small>
+                  </div>
+                  <div className="ro">{v.romaji}</div>
+                  <div className="en">
+                    <div className="en-wrap">
+                      <span>{v.en}</span>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <SpeakBtn text={v.kana} label={v.en} />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="vrow-drawer" aria-hidden={!isExpanded}>
-                <div className="vrow-drawer-inner">
-                  {v.sentence && v.sentence !== '—' && v.sentence !== '-' ? (
-                    <div className="v-sentence-block">
-                      <div className="v-sentence-label">Sentence</div>
-                      <div className="v-sentence-body">
-                        <div className="v-sentence-text-group">
-                          <div className="v-sentence-jp">{v.sentence}</div>
-                          <div className="v-sentence-kana">{v.sentenceKana}</div>
-                          <div className="v-sentence-en">{v.sentenceEn}<SpeakBtn text={v.sentence} label="Example Sentence" /></div>
+                <div className="vrow-drawer" aria-hidden={!isExpanded}>
+                  <div className="vrow-drawer-inner">
+                    {v.sentence && v.sentence !== '—' && v.sentence !== '-' ? (
+                      <div className="v-sentence-block">
+                        <div className="v-sentence-label">Sentence</div>
+                        <div className="v-sentence-body">
+                          <div className="v-sentence-text-group">
+                            <div className="v-sentence-jp">{v.sentence}</div>
+                            <div className="v-sentence-kana">{v.sentenceKana}</div>
+                            <div className="v-sentence-en">{v.sentenceEn}<SpeakBtn text={v.sentence} label="Example Sentence" /></div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="v-sentence-empty">
-                      No phrase context available for this vocabulary item.
-                    </div>
-                  )}
+                    ) : (
+                      <div className="v-sentence-empty">
+                        No phrase context available for this vocabulary item.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* ✅ 3. Use scrollIntoView on the tableRef, not window */}
+      {/* ✅ 3 & 4: Pagination with Range + Number Buttons */}
       {totalPages > 1 && (
-        <div className="pagination" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', marginTop: '20px' }}>
-          
+        <div className="pagination" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '20px' }}>
           <button 
             className="btn sm" 
             disabled={currentPage === 1} 
-            onClick={() => setCurrentPage(p => p - 1)}
+            onClick={() => goToPage(currentPage - 1)}
           >
             ‹ Prev
           </button>
           
-          <span className="muted" style={{ fontSize: '13px', fontWeight: '600' }}>
-            {currentPage} / {totalPages}
-          </span>
+          {getVisiblePages(currentPage, totalPages).map((item, idx) => (
+            item === '...' ? (
+              <span key={`dots-${idx}`} className="muted" style={{ fontSize: '13px', padding: '0 6px' }}>…</span>
+            ) : (
+              <button
+                key={item}
+                className={cx('btn sm', currentPage === item && 'primary')}
+                onClick={() => goToPage(item)}
+                style={currentPage === item ? { padding: '8px 14px' } : { padding: '8px 14px', background: 'transparent' }}
+              >
+                {item}
+              </button>
+            )
+          ))}
 
           <button 
             className="btn sm" 
             disabled={currentPage === totalPages} 
-            onClick={() => {
-              setCurrentPage(p => p + 1);
-              // Scroll the vtable into view, aligned to the top of the viewport
-              if (tableRef.current) {
-                tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }
-            }}
+            onClick={() => goToPage(currentPage + 1)}
           >
             Next ›
           </button>
+
+          {/* Show Range */}
+          <div className="muted" style={{ width: '100%', textAlign: 'center', fontSize: '12px', marginTop: '8px' }}>
+            Showing <strong style={{ color: 'var(--fg)' }}>{startIdx}–{endIdx}</strong> of {list.length} words
+          </div>
         </div>
       )}
     </section>
@@ -1141,30 +1306,150 @@ function VocabView({ nav }) {
 }
 
 /* ---------- grammar ---------- */
-function GrammarView({nav}){
+function GrammarView({nav}) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(21);
+  const containerRef = useRef(null);
+
+  // ✅ 1. Remember last page (load from localStorage on mount, save on change)
+  const PAGE_KEY = 'grammar_page';
+  useEffect(() => {
+    const saved = parseInt(localStorage.getItem(PAGE_KEY), 10);
+    if (saved && saved >= 1 && saved <= Math.ceil(GRAMMAR.length / itemsPerPage)) {
+      setCurrentPage(saved);
+    }
+  }, [itemsPerPage]); // recalc if per-page changes
+
+  useEffect(() => {
+    localStorage.setItem(PAGE_KEY, String(currentPage));
+  }, [currentPage]);
+
+  // ✅ Responsive items-per-page
+  useEffect(() => {
+    const updateItemsPerPage = () => {
+      setItemsPerPage(window.innerWidth <= 760 ? 7 : 21);
+    };
+    updateItemsPerPage();
+    window.addEventListener('resize', updateItemsPerPage);
+    return () => window.removeEventListener('resize', updateItemsPerPage);
+  }, []);
+
+  // ✅ Reset to page 1 if GRAMMAR data changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [GRAMMAR]);
+
+  // ✅ Pagination math & Context
+  const totalPages = Math.ceil(GRAMMAR.length / itemsPerPage) || 1;
+  const paginatedList = GRAMMAR.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+  const startIdx = (currentPage - 1) * itemsPerPage + 1;
+  const endIdx = Math.min(currentPage * itemsPerPage, GRAMMAR.length);
+
+  // ✅ 2. Scroll to top on every page change
+  const goToPage = (page) => {
+    if (page < 1 || page > totalPages || page === currentPage) return;
+    setCurrentPage(page);
+    // smooth scroll to the very top of the grammar list
+    setTimeout(() => {
+      containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
+  // ✅ 4. Helper for page number buttons (with ellipsis)
+  const getVisiblePages = (current, total) => {
+    const delta = 2; // How many pages to show left/right of current
+    const range = [];
+    const rangeWithDots = [];
+    let l;
+
+    for (let i = 1; i <= total; i++) {
+      if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {
+        range.push(i);
+      }
+    }
+
+    for (let i of range) {
+      if (l) {
+        if (i - l === 2) {
+          rangeWithDots.push(l + 1);
+        } else if (i - l !== 1) {
+          rangeWithDots.push('...');
+        }
+      }
+      rangeWithDots.push(i);
+      l = i;
+    }
+    return rangeWithDots;
+  };
+
   return (
     <section className="block wrap">
-      <div className="shead"><div><div className="ey">{GRAMMAR.length} patterns</div><h2>Grammar</h2><p>The core building blocks of {LEVEL_META.label} sentences, each with a spoken example.</p></div></div>
-      {nav && <div className="prac-cta"><span>Ready to drill grammar? Fill-in-the-blank questions test the exact particles &amp; patterns below.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','grammar')}>✦ Practice grammar →</button></div>}
-      <div>
-        {GRAMMAR.map((g,i)=>(
-          <div className="gcard" key={i}>
-            <div className="top"><span className="pt">{g.point}</span><span className="mn">{g.meaning}</span>{g.diff&&<span className={cx('gdiff', g.diff==='Foundation'?'easy':(g.diff==='Intermediate'?'med':'hard'))}>{g.diff}</span>}</div>
-            <div className="exp">{g.explain}</div>
-            {g.tip && <div className="gtip"><b>⚠ Watch out</b> {g.tip}</div>}
-            {g.ex.map((e,j)=>(
-              <div className="gex" key={j}><SpeakBtn text={e.jp} label="example sentence"/><div className="j">{e.jp}</div><div className="r">{e.romaji}</div><div className="e">{e.en}</div></div>
+      <div ref={containerRef} style={{ scrollMarginTop: '84px' }}> {/* offset for sticky nav */}
+        <div className="shead"><div><div className="ey">{GRAMMAR.length} patterns</div><h2>Grammar</h2><p>The core building blocks of {LEVEL_META.label} sentences, each with a spoken example.</p></div></div>
+        {nav && <div className="prac-cta"><span>Ready to drill grammar? Fill-in-the-blank questions test the exact particles &amp; patterns below.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','grammar')}>✦ Practice grammar →</button></div>}
+        <div>
+          {paginatedList.map((g,i)=>(
+            <div className="gcard" key={i}>
+              <div className="top"><span className="pt">{g.point}</span><span className="mn">{g.meaning}</span>{g.diff&&<span className={cx('gdiff', g.diff==='Foundation'?'easy':(g.diff==='Intermediate'?'med':'hard'))}>{g.diff}</span>}</div>
+              <div className="exp">{g.explain}</div>
+              {g.tip && <div className="gtip"><b>⚠ Watch out</b> {g.tip}</div>}
+              {g.ex.map((e,j)=>(
+                <div className="gex" key={j}><SpeakBtn text={e.jp} label="example sentence"/><div className="j">{e.jp}</div><div className="r">{e.romaji}</div><div className="e">{e.en}</div></div>
+              ))}
+              {(g.prereq||(g.related&&g.related.length))&&(
+                <div className="grel">{g.prereq?<span className="gr-pre"><b>Builds on:</b> {g.prereq}</span>:null}{g.related&&g.related.length?<span className="gr-rel"><b>Related:</b> {g.related.join(' · ')}</span>:null}</div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* ✅ 3 & 4: Pagination with Range + Number Buttons */}
+        {totalPages > 1 && (
+          <div className="pagination" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '20px' }}>
+            <button 
+              className="btn sm" 
+              disabled={currentPage === 1} 
+              onClick={() => goToPage(currentPage - 1)}
+            >
+              ‹ Prev
+            </button>
+            
+            {getVisiblePages(currentPage, totalPages).map((item, idx) => (
+              item === '...' ? (
+                <span key={`dots-${idx}`} className="muted" style={{ fontSize: '13px', padding: '0 6px' }}>…</span>
+              ) : (
+                <button
+                  key={item}
+                  className={cx('btn sm', currentPage === item && 'primary')}
+                  onClick={() => goToPage(item)}
+                  style={currentPage === item ? { padding: '8px 14px' } : { padding: '8px 14px', background: 'transparent' }}
+                >
+                  {item}
+                </button>
+              )
             ))}
-            {(g.prereq||(g.related&&g.related.length))&&(
-              <div className="grel">{g.prereq?<span className="gr-pre"><b>Builds on:</b> {g.prereq}</span>:null}{g.related&&g.related.length?<span className="gr-rel"><b>Related:</b> {g.related.join(' · ')}</span>:null}</div>
-            )}
+
+            <button 
+              className="btn sm" 
+              disabled={currentPage === totalPages} 
+              onClick={() => goToPage(currentPage + 1)}
+            >
+              Next ›
+            </button>
+
+            {/* Show Range */}
+            <div className="muted" style={{ width: '100%', textAlign: 'center', fontSize: '12px', marginTop: '8px' }}>
+              Showing <strong style={{ color: 'var(--fg)' }}>{startIdx}–{endIdx}</strong> of {GRAMMAR.length} patterns
+            </div>
           </div>
-        ))}
+        )}
       </div>
     </section>
   );
 }
-
 /* ---------- numbers, time & counters ---------- */
 function NumGrid({items}){
   return (
