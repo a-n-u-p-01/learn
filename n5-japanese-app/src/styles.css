@@ -72,6 +72,48 @@ section{scroll-margin-top:84px}
 }
 .tab:hover{color:var(--fg);background:var(--bg-2)}
 .tab.on{color:#fff;background:var(--accent-dim);border-color:rgba(255,93,82,.3)}
+/* The wrapper must be relative for the absolute dropdown to know where to sit */
+.levelsw {
+  position: relative;
+  display: inline-block;
+}
+
+/* Small arrow animation */
+.dropdown-arrow {
+  margin-left: 8px;
+  transition: transform 0.2s ease;
+}
+
+/* Rotate arrow when menu is open (applied via JS if you want, or CSS) */
+/* .levelsw:has(.lvdropdown-menu) .dropdown-arrow { transform: rotate(180deg); } */
+
+/* The actual floating dropdown container */
+.lvdropdown-menu {
+  position: absolute;
+  top: calc(100% + 12px); /* Sits right below the trigger */
+  right: 0; /* Aligns to the right like standard user menus, or change to left: 0 */
+  min-width: 100px; /* Ensures it's wide enough */
+  background: rgba(20, 20, 30, 0.95); /* Dark glassmorphism */
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6); /* Floating 3D shadow */
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* Small gap between pill buttons */
+}
+
+/* Override the horizontal layout of lvbtn to be vertical inside the dropdown */
+.lvdropdown-item {
+  width: 100%;
+  justify-content: center; /* Centers text in the pill */
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  /* Your existing lvbtn padding/margin will work, but width:100% ensures they fill the menu */
+}
 
 /* hero */
 .hero{padding-top:clamp(56px,11vw,120px);padding-bottom:clamp(36px,6vw,60px);position:relative}

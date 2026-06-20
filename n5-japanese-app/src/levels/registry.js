@@ -29,7 +29,8 @@ var LEVELS = {
     hasKana:false, hasNumbers:false, next:null,
     mock:{ secs:25*60, mix:{Vocabulary:7,Kanji:5,Grammar:6,Reading:4,Listening:3} }
   }
+  
 };
-var LEVEL_ORDER = ['n5','n4'];
+var LEVEL_ORDER = ['n5','n4',];
 
 export { LEVELS, LEVEL_ORDER };

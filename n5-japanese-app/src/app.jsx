@@ -298,12 +298,35 @@ function exWord(ex){ return (ex||'').split(' (')[0]; }
 const NAVICON = {home:'家',kana:'あ',kanji:'漢',vocab:'語',grammar:'文',practice:'練'};
 const NAVSHORT = {home:'Home',kana:'Kana',kanji:'Kanji',vocab:'Words',grammar:'Grammar',practice:'Practice'};
 const LEVEL_MARK = {'5':'五','4':'四','3':'三','2':'二','1':'一'};
+
 function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel}){
   const [menu,setMenu] = useState(false);
   const signedIn = !!(user && user.uid);
   const syncTxt = signedIn ? (syncState==='saving' ? '☁ Saving…' : '☁ Synced across devices') : '✓ Saved on this device';
   const mark = LEVEL_MARK[(LEVEL_META.label||'').slice(-1)] || '語';
   const avatar = signedIn ? (user.name||'U').charAt(0).toUpperCase() : '☺';
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRefLevel = useRef(null);
+  const profileDropDownRef = useRef(null);
+
+
+    useEffect(() => {
+  function handleClickOutside(event) {
+    // Close JLPT dropdown
+    if (isOpen && dropdownRefLevel.current && !dropdownRefLevel.current.contains(event.target)) {
+      setIsOpen(false);
+    }
+    // Close Profile dropdown (FIXED)
+    if (menu && profileDropDownRef.current && !profileDropDownRef.current.contains(event.target)) {
+      setMenu(false);
+    }
+  }
+
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => document.removeEventListener("mousedown", handleClickOutside);
+}, [isOpen, menu]); // Added 'menu' to dependencies
+
+
   return (
     <nav className="nav">
       <div className="wrap nav-inner">
@@ -311,12 +334,47 @@ function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel}){
           <span className="mark">{mark}</span>
           <span>日本語<small>JLPT {LEVEL_META.label} · Japanese</small></span>
         </div>
-        <div className="levelsw" role="tablist" aria-label="JLPT level">
-          {LEVEL_ORDER.map(function(id){ return <button key={id} className={cx('lvbtn',level===id&&'on')} aria-pressed={level===id} onClick={()=>setLevel(id)}>{LEVELS[id].label}</button>; })}
-        </div>
+       
         <div className="tabs">
           {TABS.map(([id,label])=>(<span key={id} className={cx('tab',view===id&&'on')} aria-current={view===id?'page':undefined} onClick={()=>navigate(id)}>{label}</span>))}
         </div>
+  
+<div className="levelsw" ref={dropdownRefLevel} role="combobox" aria-label="JLPT level">
+  
+  {/* The Trigger Button */}
+  <button 
+    className={cx('lvbtn', level && 'on')} 
+    onClick={() => setIsOpen(!isOpen)}
+    aria-expanded={isOpen}
+  >
+    {LEVELS[level].label}
+    {/* Small dropdown arrow icon */}
+    <svg className="dropdown-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>
+  </button>
+
+  {/* The Dropdown Menu */}
+  {isOpen && (
+    <div className="lvdropdown-menu">
+      {LEVEL_ORDER.map(function(id) { 
+        return (
+          <button 
+            key={id} 
+            className={cx('lvbtn', 'lvdropdown-item', level === id && 'on')} 
+            aria-pressed={level === id}
+            onClick={() => {
+              setLevel(id);
+              setIsOpen(false); // Close the menu after selecting
+            }}
+          >
+            {LEVELS[id].label}
+          </button>
+        ); 
+      })}
+    </div>
+  )}
+</div>
         <div className="prof">
           <button className={cx('prof-btn',!signedIn&&'guest')} onClick={()=>setMenu(m=>!m)} aria-label="Account menu">
             <span className={cx('ava',signedIn&&'on')}>{avatar}</span>
@@ -325,7 +383,7 @@ function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel}){
           {menu && (
             <React.Fragment>
               <div className="menu-back" onClick={()=>setMenu(false)}/>
-              <div className="prof-menu">
+              <div className="prof-menu" ref={profileDropDownRef}>
                 {signedIn ? (
                   <React.Fragment>
                     <div className="who">{user.email}<br/><span className="synctag on">{syncTxt}</span></div>
@@ -349,6 +407,8 @@ function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel}){
     </nav>
   );
 }
+
+
 function BottomNav({view,navigate}){
   return (
     <nav className="botnav" aria-label="Sections">
