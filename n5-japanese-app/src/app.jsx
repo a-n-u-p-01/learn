@@ -355,7 +355,7 @@ const NAVICON = {home:'家',kana:'あ',kanji:'漢',vocab:'語',grammar:'文',pra
 const NAVSHORT = {home:'Home',kana:'Kana',kanji:'Kanji',vocab:'Words',grammar:'Grammar',practice:'Practice'};
 const LEVEL_MARK = {'5':'五','4':'四','3':'三','2':'二','1':'一'};
 
-function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel}){
+function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel,theme,setTheme}){
   const [menu,setMenu] = useState(false);
   const signedIn = !!(user && user.uid);
   const syncTxt = signedIn ? (syncState==='saving' ? '☁ Saving…' : '☁ Synced across devices') : '✓ Saved on this device';
@@ -443,6 +443,12 @@ function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel}){
                 {signedIn ? (
                   <React.Fragment>
                     <div className="who">{user.email}<br/><span className="synctag on">{syncTxt}</span></div>
+                    
+                    {/* 🔥 Insert Theme Toggle here */}
+                    <button className="mi" onClick={() => { setTheme(t => t === 'dark' ? 'light' : 'dark'); setMenu(false); }}>
+                      {theme === 'dark' ? '☀️' : '🌙'} {theme === 'dark' ? 'Light' : 'Dark'} mode
+                    </button>
+
                     <div className="sep"/>
                     <button className="mi" onClick={()=>{setMenu(false);navigate('practice');}}>Continue practicing</button>
                     <button className="mi danger" onClick={()=>{setMenu(false);onSignOut();}}>Sign out</button>
@@ -450,6 +456,10 @@ function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel}){
                 ) : (
                   <React.Fragment>
                     <div className="who">Studying as a guest<br/><span className="synctag">Progress saved on this device</span></div>
+                      {/* 🔥 Insert Theme Toggle here */}
+                    <button className="mi" onClick={() => { setTheme(t => t === 'dark' ? 'light' : 'dark'); setMenu(false); }}>
+                      {theme === 'dark' ? '☀️' : '🌙'} {theme === 'dark' ? 'Light' : 'Dark'} mode
+                    </button>
                     <div className="sep"/>
                     <div style={{padding:'4px 6px 8px'}}><GoogleBtn onSignIn={onSignIn} label="Sign in to sync" full/></div>
                     <div className="muted" style={{fontSize:'11.5px',padding:'0 8px 6px',lineHeight:1.5}}>Sign in to save your progress and use it on your phone and computer.</div>
@@ -2102,7 +2112,7 @@ function CloudError(){
 }
 
 /* ---------- app shell ---------- */
-function App({user,onSignIn,onSignOut}){
+function App({user,onSignIn,onSignOut,theme,setTheme}){
   const [route,navigate] = useHashRoute();
   const view = route.view;
   const [level,setLevelState] = useState('n5');
@@ -2144,7 +2154,7 @@ const setLevel = (lv) => {
 
   return (
     <div className="app">
-      <Nav view={v} navigate={navigate} user={user} onSignIn={onSignIn} onSignOut={onSignOut} syncState={cp.syncState} level={level} setLevel={setLevel}/>
+      <Nav view={v} navigate={navigate} user={user} onSignIn={onSignIn} onSignOut={onSignOut} syncState={cp.syncState} level={level} setLevel={setLevel} theme={theme} setTheme={setTheme}/>
       <main className="main" key={level}>
         {v==='home' && <Home setView={navigate} name={name} prog={cp.prog} setGoal={cp.setGoal} toggleDaily={cp.toggleDaily} setExamDate={cp.setExamDate} setLevel={setLevel} levelDue={cp.levelDue} user={user} onSignIn={onSignIn}/>}
         {v==='kana' && <KanaView nav={navigate}/>}
@@ -2185,6 +2195,20 @@ class ErrorBoundary extends React.Component{
 function RootApp(){
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true); // ← NEW: Prevent rendering until auth resolves
+
+    // 🔥 New theme state
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('app_theme');
+    if (saved) return saved;
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  });
+
+   // 🔥 Apply theme to the root HTML
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app_theme', theme);
+  }, [theme]);
+
 
   useEffect(()=>{
     let alive = true;
@@ -2238,7 +2262,7 @@ function RootApp(){
     return <Splash />;
   }
 
-  return <App key={user ? user.uid : 'guest'} user={user} onSignIn={signIn} onSignOut={signOut}/>;
+  return <App key={user ? user.uid : 'guest'} user={user} onSignIn={signIn} onSignOut={signOut} theme={theme} setTheme={setTheme}/>;
 }
 function Root(){ return <ErrorBoundary><RootApp/></ErrorBoundary>; }
 
