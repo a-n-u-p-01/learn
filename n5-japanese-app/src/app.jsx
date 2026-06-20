@@ -863,11 +863,9 @@ export default function KanjiView({ nav }) {
   const goToPage = (page) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
     setCurrentPage(page);
-    setTimeout(() => {
       if (gridRef.current) {
         gridRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    }, 100);
   };
 
   // ✅ 4. Helper for page number buttons (with ellipsis)
@@ -1112,11 +1110,11 @@ function VocabView({ nav }) {
     setCurrentPage(page);
     // 🔥 Clear expanded rows when switching pages to avoid stale visual state
     setExpandedRows({});
-    setTimeout(() => {
-      if (tableRef.current) {
+  
+    if (tableRef.current) {
         tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 100);
+    }
+
   };
 
   // ✅ 4. Helper for page number buttons (with ellipsis)
@@ -1351,9 +1349,8 @@ function GrammarView({nav}) {
     if (page < 1 || page > totalPages || page === currentPage) return;
     setCurrentPage(page);
     // Use 100ms to ensure DOM paints completely before scrolling
-    setTimeout(() => {
-      containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+     containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
   };
 
   // ✅ 4. Helper for page number buttons (with ellipsis)
