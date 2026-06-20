@@ -799,13 +799,13 @@ function KanaView({nav}){
   );
 }
 
-
 export default function KanjiView({ nav }) {
   const [q, setQ] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const gridRef = useRef(null);
   const PAGE_KEY = 'kanji_page';
+  const restoredRef = useRef(false); // ⭐ Ensure we restore only once
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -831,8 +831,10 @@ export default function KanjiView({ nav }) {
     return () => window.removeEventListener('resize', updateItemsPerPage);
   }, []);
 
-  // ✅ 1. Remember last page (load on mount, save on change)
+  // ✅ 1. Remember last page – only once on mount
   useEffect(() => {
+    if (restoredRef.current) return; // prevent re‑restoring
+
     const saved = parseInt(localStorage.getItem(PAGE_KEY), 10);
     const maxPage = Math.ceil(list.length / itemsPerPage) || 1;
     if (saved && saved >= 1 && saved <= maxPage) {
@@ -840,8 +842,10 @@ export default function KanjiView({ nav }) {
     } else {
       setCurrentPage(1);
     }
-  }, [list, itemsPerPage]);
+    restoredRef.current = true; // mark as restored
+  }, [list, itemsPerPage]); // ⭐ still runs if list/itemsPerPage change, but ref prevents re‑applying
 
+  // ✅ Save page on every change
   useEffect(() => {
     localStorage.setItem(PAGE_KEY, String(currentPage));
   }, [currentPage]);
@@ -863,7 +867,7 @@ export default function KanjiView({ nav }) {
       if (gridRef.current) {
         gridRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    }, 50);
+    }, 100);
   };
 
   // ✅ 4. Helper for page number buttons (with ellipsis)
@@ -945,7 +949,6 @@ export default function KanjiView({ nav }) {
         </div>
       )}
 
-      {/* ✅ Attach ref here for precise scroll-to-top on every page change */}
       <div className="kanji-grid-container" ref={gridRef} style={{ scrollMarginTop: '84px' }}>
         <div className="kanji-grid">
           {paginatedList.map((k, i) => (
@@ -1009,7 +1012,6 @@ export default function KanjiView({ nav }) {
         </p>
       )}
 
-      {/* ✅ 3 & 4: Pagination with Range + Number Buttons */}
       {totalPages > 1 && (
         <div className="pagination" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '20px' }}>
           <button 
@@ -1043,7 +1045,6 @@ export default function KanjiView({ nav }) {
             Next ›
           </button>
 
-          {/* Show Range */}
           <div className="muted" style={{ width: '100%', textAlign: 'center', fontSize: '12px', marginTop: '8px' }}>
             Showing <strong style={{ color: 'var(--fg)' }}>{startIdx}–{endIdx}</strong> of {list.length} characters
           </div>
@@ -1109,11 +1110,13 @@ function VocabView({ nav }) {
   const goToPage = (page) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
     setCurrentPage(page);
+    // 🔥 Clear expanded rows when switching pages to avoid stale visual state
+    setExpandedRows({});
     setTimeout(() => {
       if (tableRef.current) {
         tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    }, 50);
+    }, 100);
   };
 
   // ✅ 4. Helper for page number buttons (with ellipsis)
@@ -1170,7 +1173,6 @@ function VocabView({ nav }) {
       {nav && (
         <div className="prac-cta" >
           <span>Turn reading into recall — quiz yourself on these words.</span>
-          {/* 🔥 Removed ref from this button */}
           <button className="btn primary sm" onClick={() => nav('practice', 'quiz', 'vocab')}>
             ✦ Practice vocab →
           </button>
@@ -1185,7 +1187,6 @@ function VocabView({ nav }) {
         ))}
       </div>
 
-      {/* ✅ Fixed: Wrapped vtable and added ref for precise scroll-to-top */}
       <div ref={tableRef} style={{ scrollMarginTop: '84px' }}>
         <div className="vtable">
           <div className="vhead">
@@ -1295,7 +1296,6 @@ function VocabView({ nav }) {
             Next ›
           </button>
 
-          {/* Show Range */}
           <div className="muted" style={{ width: '100%', textAlign: 'center', fontSize: '12px', marginTop: '8px' }}>
             Showing <strong style={{ color: 'var(--fg)' }}>{startIdx}–{endIdx}</strong> of {list.length} words
           </div>
@@ -1308,17 +1308,20 @@ function VocabView({ nav }) {
 /* ---------- grammar ---------- */
 function GrammarView({nav}) {
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(21);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const containerRef = useRef(null);
+  const PAGE_KEY = 'grammar_page';
 
   // ✅ 1. Remember last page (load from localStorage on mount, save on change)
-  const PAGE_KEY = 'grammar_page';
   useEffect(() => {
     const saved = parseInt(localStorage.getItem(PAGE_KEY), 10);
-    if (saved && saved >= 1 && saved <= Math.ceil(GRAMMAR.length / itemsPerPage)) {
+    const maxPage = Math.ceil(GRAMMAR.length / itemsPerPage) || 1;
+    if (saved && saved >= 1 && saved <= maxPage) {
       setCurrentPage(saved);
+    } else {
+      setCurrentPage(1);
     }
-  }, [itemsPerPage]); // recalc if per-page changes
+  }, [itemsPerPage]);
 
   useEffect(() => {
     localStorage.setItem(PAGE_KEY, String(currentPage));
@@ -1327,17 +1330,12 @@ function GrammarView({nav}) {
   // ✅ Responsive items-per-page
   useEffect(() => {
     const updateItemsPerPage = () => {
-      setItemsPerPage(window.innerWidth <= 760 ? 7 : 21);
+      setItemsPerPage(window.innerWidth <= 760 ? 5 : 10);
     };
     updateItemsPerPage();
     window.addEventListener('resize', updateItemsPerPage);
     return () => window.removeEventListener('resize', updateItemsPerPage);
   }, []);
-
-  // ✅ Reset to page 1 if GRAMMAR data changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [GRAMMAR]);
 
   // ✅ Pagination math & Context
   const totalPages = Math.ceil(GRAMMAR.length / itemsPerPage) || 1;
@@ -1352,15 +1350,15 @@ function GrammarView({nav}) {
   const goToPage = (page) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
     setCurrentPage(page);
-    // smooth scroll to the very top of the grammar list
+    // Use 100ms to ensure DOM paints completely before scrolling
     setTimeout(() => {
       containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
+    }, 100);
   };
 
   // ✅ 4. Helper for page number buttons (with ellipsis)
   const getVisiblePages = (current, total) => {
-    const delta = 2; // How many pages to show left/right of current
+    const delta = 2;
     const range = [];
     const rangeWithDots = [];
     let l;
@@ -1387,7 +1385,7 @@ function GrammarView({nav}) {
 
   return (
     <section className="block wrap">
-      <div ref={containerRef} style={{ scrollMarginTop: '84px' }}> {/* offset for sticky nav */}
+      <div ref={containerRef} style={{ scrollMarginTop: '84px' }}>
         <div className="shead"><div><div className="ey">{GRAMMAR.length} patterns</div><h2>Grammar</h2><p>The core building blocks of {LEVEL_META.label} sentences, each with a spoken example.</p></div></div>
         {nav && <div className="prac-cta"><span>Ready to drill grammar? Fill-in-the-blank questions test the exact particles &amp; patterns below.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','grammar')}>✦ Practice grammar →</button></div>}
         <div>
@@ -1440,7 +1438,6 @@ function GrammarView({nav}) {
               Next ›
             </button>
 
-            {/* Show Range */}
             <div className="muted" style={{ width: '100%', textAlign: 'center', fontSize: '12px', marginTop: '8px' }}>
               Showing <strong style={{ color: 'var(--fg)' }}>{startIdx}–{endIdx}</strong> of {GRAMMAR.length} patterns
             </div>
@@ -2105,8 +2102,24 @@ function App({user,onSignIn,onSignOut}){
   setActiveLevel(level); // swap the active level's content in before children read it
   // resume the level the user was last on (works for local guest doc + cloud doc once it loads)
   useEffect(()=>{ if(cp.activeLevel && cp.activeLevel!==level && !switchedRef.current){ switchedRef.current=true; setLevelState(cp.activeLevel); } },[cp.activeLevel]);
-  const setLevel=(lv)=>{ if(lv===level)return; switchedRef.current=true; setLevelState(lv); cp.setLevelPref(lv); try{ if(view!=='home') navigate('home'); }catch(e){} try{window.scrollTo({top:0});}catch(e){} };
-  useEffect(()=>{ try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} },[view,level]);
+const setLevel = (lv) => {
+  if (lv === level) return;
+  switchedRef.current = true;
+  setLevelState(lv);
+  cp.setLevelPref(lv);
+
+  // 🔥 Reset pagination memory when switching JLPT levels
+  localStorage.setItem('vocab_page', '1');
+  localStorage.setItem('kanji_page', '1');
+  localStorage.setItem('grammar_page', '1');
+
+  try {
+    if (view !== 'home') navigate('home');
+  } catch (e) {}
+  try {
+    window.scrollTo({ top: 0 });
+  } catch (e) {}
+};  useEffect(()=>{ try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} },[view,level]);
   useEffect(()=>{ if(!speechSupported)return; const w=()=>warmSpeech(); window.addEventListener('pointerdown',w,{once:true}); return ()=>{ try{window.removeEventListener('pointerdown',w);}catch(e){} }; },[]);
   // some views don't exist for every level (no kana/numbers at N4) — fall back to home
   const allowed = view==='home'||view==='kanji'||view==='vocab'||view==='grammar'||view==='practice'||(view==='kana'&&LEVEL_META.hasKana)||(view==='numbers'&&LEVEL_META.hasNumbers);
