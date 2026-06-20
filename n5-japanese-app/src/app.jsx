@@ -829,29 +829,129 @@ function displayReading(reading){
 }
 
 /* ---------- vocab ---------- */
-function VocabView({nav}){
-  const cats = useMemo(()=>['All',...Array.from(new Set(VOCAB.map(v=>v.cat)))],[]);
-  const [cat,setCat] = useState('All');
-  const list = cat==='All'?VOCAB:VOCAB.filter(v=>v.cat===cat);
+
+function VocabView({ nav }) {
+  const cats = useMemo(() => ['All', ...Array.from(new Set(VOCAB.map(v => v.cat)))], []);
+  const [cat, setCat] = useState('All');
+  const [expandedRows, setExpandedRows] = useState({});
+
+  const list = cat === 'All' ? VOCAB : VOCAB.filter(v => v.cat === cat);
+
+  const toggleRow = (id) => {
+    setExpandedRows(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
   return (
     <section className="block wrap">
-      <div className="shead"><div><div className="ey">{VOCAB.length} words</div><h2>Vocabulary</h2><p>Filter by theme. Each word shows kanji/kana, romaji, and meaning — tap 🔊 to hear it.</p></div></div>
-      {nav && <div className="prac-cta"><span>Turn reading into recall — quiz yourself on these words.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','vocab')}>✦ Practice vocab →</button></div>}
-      <div className="chips" style={{marginBottom:18}}>{cats.map(c=>(<span key={c} className={cx('chip',cat===c&&'on')} onClick={()=>setCat(c)}>{c}</span>))}</div>
-      <div className="vtable">
-        <div className="vhead"><span>Japanese</span><span>Romaji</span><span>Meaning</span></div>
-        {list.map((v,i)=>(
-          <div className="vrow" key={v.jp+i}>
-            <div className="jp">{v.jp}<small>{v.kana}</small></div>
-            <div className="ro">{v.romaji}</div>
-            <div className="en"><div className="en-wrap"><span>{v.en}</span><SpeakBtn text={v.kana} label={v.en}/></div></div>
-          </div>
+      <div className="shead">
+        <div>
+          <div className="ey">{VOCAB.length} words</div>
+          <h2>Vocabulary</h2>
+          <p>Filter by theme. Click any row to view its usage example in context.</p>
+        </div>
+      </div>
+
+      {nav && (
+        <div className="prac-cta">
+          <span>Turn reading into recall — quiz yourself on these words.</span>
+          <button className="btn primary sm" onClick={() => nav('practice', 'quiz', 'vocab')}>
+            ✦ Practice vocab →
+          </button>
+        </div>
+      )}
+
+      <div className="chips" style={{ marginBottom: 18 }}>
+        {cats.map(c => (
+          <span key={c} className={cx('chip', cat === c && 'on')} onClick={() => setCat(c)}>
+            {c}
+          </span>
         ))}
+      </div>
+
+      <div className="vtable">
+        <div className="vhead">
+          <span className="vhead-control"></span>
+          <span>Japanese</span>
+          <span>Romaji</span>
+          <span>Meaning</span>
+        </div>
+
+        {list.map((v, i) => {
+          const rowId = v.jp + i;
+          const isExpanded = !!expandedRows[rowId];
+
+          return (
+            <div 
+              className={cx('vrow-group', isExpanded && 'is-expanded')} 
+              key={rowId}
+            >
+              {/* Primary Interactive Row Track */}
+              <div 
+                className="vrow" 
+                onClick={() => toggleRow(rowId)}
+                role="button"
+                aria-expanded={isExpanded}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleRow(rowId);
+                  }
+                }}
+              >
+                <div className="vcol-control">
+                  <span className="v-chevron-icon" aria-hidden="true" />
+                </div>
+                <div className="jp">
+                  {v.jp}
+                  <small>{v.kana}</small>
+                </div>
+                <div className="ro">{v.romaji}</div>
+                <div className="en">
+                  <div className="en-wrap">
+                    <span>{v.en}</span>
+                    {/* Stop propagation prevents row collapse when clicking word audio */}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <SpeakBtn text={v.kana} label={v.en} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Expandable Structural Context Drawer */}
+              <div className="vrow-drawer" aria-hidden={!isExpanded}>
+                <div className="vrow-drawer-inner">
+                  {v.sentence && v.sentence !== '—' && v.sentence !== '-' ? (
+                    <div className="v-sentence-block">
+                      <div className="v-sentence-label">Sentence</div>
+                      <div className="v-sentence-body">
+                        <div className="v-sentence-text-group">
+                          <div className="v-sentence-jp">{v.sentence}</div>
+                          <div className="v-sentence-kana">{v.sentenceKana}</div>
+                          <div className="v-sentence-en">{v.sentenceEn}<SpeakBtn text={v.sentence} label="Example Sentence" /></div>
+                            
+                       
+                        </div>
+                      
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="v-sentence-empty">
+                      No phrase context available for this vocabulary item.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
 }
-
 /* ---------- grammar ---------- */
 function GrammarView({nav}){
   return (
