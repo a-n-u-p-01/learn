@@ -845,6 +845,9 @@ justify-content: space-between;
     gap: 4px 16px;
     padding: 14px 16px;
   }
+  .v-chevron-icon {
+    display: none;
+  }
 
   /* ---------- Row 1: Vocab (left) + Chevron (right) ---------- */
   .vrow .jp {

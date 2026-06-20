@@ -112,8 +112,13 @@ const REVIEW_BUFFER_DAYS = 10; // pure-review run-up before the exam (new materi
 const MIN_NEW_PER_DAY = 10;    // never schedule a slower pace than this — a far-off date means you finish early, not crawl
 function srsUpdate(s, grade){
   let ease=s?s.ease:2.5, interval=s?s.interval:0, reps=s?s.reps:0, lapses=s?s.lapses:0;
-  if(grade==='again'){ return {ease:Math.max(1.3,ease-0.2), interval:0, reps:0, lapses:lapses+1, due:Date.now()+60000}; }
-  if(grade==='hard'){ reps=reps+1; ease=Math.max(1.3,ease-0.15); interval=interval>0?Math.max(1,Math.round(interval*1.2)):1; }
+  if(grade==='again'){ 
+    lapses = lapses + 1;
+    // 🔥 Leech protection: if they've missed it 3 times, drop ease aggressively
+    if(lapses >= 3) ease = Math.max(1.3, ease - 0.4); 
+    else ease = Math.max(1.3, ease - 0.2);
+    return {ease, interval:0, reps:0, lapses, due:Date.now()+60000}; 
+  }  if(grade==='hard'){ reps=reps+1; ease=Math.max(1.3,ease-0.15); interval=interval>0?Math.max(1,Math.round(interval*1.2)):1; }
   else if(grade==='easy'){ reps=reps+1; ease=ease+0.15; interval=reps===1?2:Math.round((interval||1)*ease*1.3); }
   else { reps=reps+1; interval=reps===1?1:(reps===2?3:Math.round((interval||1)*ease)); } // good
   interval=Math.min(Math.max(interval,1),365);
@@ -679,11 +684,12 @@ function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
               : (exam
                   ? (feasible
                       ? (slack>=30
-                          ? <span><b className="ontrack">✓ On track — ahead of schedule.</b> Do today's plan daily at <b>{targetNew} new/day</b> and you'll have learned all of {LEVEL_META.label} by <b>{fmtYmd(learnByDate)}</b>, well before your exam on {fmtYmd(exam)} — then keep reviewing to stay sharp.</span>
-                          : <span><b className="ontrack">✓ On track for {fmtYmd(exam)}.</b> Finish today's plan every day (<b>{targetNew} new/day</b>) and you'll know all of {LEVEL_META.label} by <b>{fmtYmd(learnByDate)}</b>, leaving <b>{slack}</b> day{slack===1?'':'s'} to review before the exam.</span>)
+                          ? <span> <b className="ontrack">✓ On track — ahead of schedule.</b> <b>Stay on your daily study plan to complete {LEVEL_META.label} by {fmtYmd(learnByDate)}.</b> </span>
+                          : <span> <b className="ontrack">✓ On track for {fmtYmd(exam)}.</b> <b>Stick to your daily plan of <b>{targetNew} new/day</b> to finish {LEVEL_META.label} by <b>{fmtYmd(learnByDate)}</b>. This leaves <b>{slack}</b> day{slack === 1 ? '' : 's'} to review before the exam.</b> </span>)
                       : <span><b className="behind">⚠ That date is too soon.</b> From today, {LEVEL_META.label} needs about <b>{mDays+REVIEW_BUFFER_DAYS} days</b> (you can learn at most {NEW_PER_DAY} new per deck a day). Pick an exam date on or after <b>{fmtYmd(minDate)}</b>.</span>)
                   : <span>At <b>{targetNew} new cards/day</b> you'll learn the remaining <b>{totalRemNew}</b> in about <b>{noExamDays} days</b>. Set a target exam date below for a plan built around it.</span>))
         }
+
         <div className="examrow">
           <label>Target exam date{exam&&dToExam!=null?(dToExam>0?(' · '+dToExam+' days to go'):' · today'):''}</label>
           <input type="date" className="dateinp" value={exam} onChange={function(e){ setExamDate(e.target.value); }}/>
@@ -719,8 +725,7 @@ function Home({setView,name,prog,setGoal,toggleDaily,setExamDate,setLevel,levelD
         {L.id==='n5'
           ? <h1>Learn Japanese<br/>from <span className="jp">ゼロ</span> to N5.</h1>
           : <h1>Level up to<br/>JLPT <span className="jp">{L.label}</span>.</h1>}
-        <p>A calm, focused place to master the JLPT {L.label}: read the reference once, then lock it in with flashcards and quizzes — with audio, and your progress synced to every device.</p>
-        <TodayPanel prog={prog} name={name} setView={setView} toggleDaily={toggleDaily} setExamDate={setExamDate}/>
+<p>A calm, focused place to master the JLPT {L.label} faster: read the reference once, then lock it in with flashcards, quizzes, and mock exams — with audio, mistake tracking, and progress synced everywhere.</p>       <TodayPanel prog={prog} name={name} setView={setView} toggleDaily={toggleDaily} setExamDate={setExamDate}/>
         <OtherLevels levelDue={levelDue} level={L.id} setLevel={setLevel}/>
         <StreakCard prog={prog} setGoal={setGoal}/>
         <div className="cta">
@@ -953,7 +958,15 @@ export default function KanjiView({ nav }) {
             <div className="kj" key={k.c + i}>
               <div className="big">{k.c}</div>
               <div className="mean">{k.mean}</div>
-
+<a 
+  href={`https://jisho.org/search/${k.c}%20%23kanji`} 
+  target="_blank" 
+  rel="noopener noreferrer"
+  className="swlink" 
+  style={{fontSize: '11px', textAlign: 'center', marginTop: '6px'}}
+>
+  ✍️ See stroke order on Jisho
+</a>
               {/* Japanese Section */}
               {k.kun && k.kun !== '—' && k.kun !== '-' && (
                 <div className="reading-section ja-theme">
