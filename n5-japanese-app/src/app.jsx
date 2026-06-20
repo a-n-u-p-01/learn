@@ -157,16 +157,31 @@ function mergeStats(a,b){ if(!a)return b||null; if(!b)return a; const base=(a.la
 function useCloudProgress(user, level){
   const signedIn = !!(user && user.uid);
   const uid = signedIn ? user.uid : null;
-  const [doc,setDoc] = useState(function(){ const d = signedIn ? (lsGet(userKey(uid))||{levels:{},activeLevel:'n5'}) : (lsGet(GUEST_KEY)||{levels:{},activeLevel:'n5'}); return migrateDoc(d); });
+  const [doc,setDoc] = useState(function(){ 
+    const d = signedIn ? (lsGet(userKey(uid))||{levels:{},activeLevel:'n5'}) : (lsGet(GUEST_KEY)||{levels:{},activeLevel:'n5'});
+    return migrateDoc(d);
+  });
   const [syncState,setSyncState] = useState(signedIn ? 'saving' : 'local'); // local | saving | saved
+  const [loading, setLoading] = useState(signedIn && cloud.ok); // ← NEW: loading state (true only when we expect cloud data)
   const timer = useRef(null);
   const docRef = useRef(doc);
   useEffect(()=>{ docRef.current = doc; },[doc]);
+
   // persist locally always; when signed in, also debounce a cloud save
   const persist = (next)=>{
-    if(signedIn){ lsSet(userKey(uid), next); if(cloud.ok){ setSyncState('saving'); clearTimeout(timer.current); timer.current=setTimeout(function(){ cloud.save(uid,next).then(function(){ setSyncState('saved'); }); },500); } }
+    if(signedIn){ 
+      lsSet(userKey(uid), next); 
+      if(cloud.ok){ 
+        setSyncState('saving'); 
+        clearTimeout(timer.current); 
+        timer.current=setTimeout(function(){ 
+          cloud.save(uid,next).then(function(){ setSyncState('saved'); });
+        },500); 
+      } 
+    }
     else { lsSet(GUEST_KEY, next); setSyncState('local'); }
   };
+
   // commit operates on the ACTIVE level's slice; the rest of the document is preserved
   const commit = useCallback((updater)=>{
     setDoc(prev=>{
@@ -177,19 +192,35 @@ function useCloudProgress(user, level){
       persist(next); return next;
     });
   },[uid,level,signedIn]);
+
   // when signed in: pull cloud, claim any guest progress once, then stay live-synced
   useEffect(()=>{
-    if(!signedIn || !cloud.ok) return;
+    if(!signedIn || !cloud.ok){
+      // Guest or no cloud – no data to load
+      setLoading(false);
+      return;
+    }
     let alive=true, unsub=null;
     const guest = lsGet(GUEST_KEY);
-    cloud.load(uid).then(function(d){ if(!alive)return;
-      setDoc(function(prev){ let m=mergeDoc(prev,d); if(guest) m=mergeDoc(m,guest); lsSet(userKey(uid),m); cloud.save(uid,m); return m; });
-      if(guest) lsDel(GUEST_KEY);   // claimed into this account — never re-merge into a different account
+    cloud.load(uid).then(function(d){ 
+      if(!alive)return;
+      setDoc(function(prev){ 
+        let m=mergeDoc(prev,d); 
+        if(guest) m=mergeDoc(m,guest); 
+        lsSet(userKey(uid),m); 
+        cloud.save(uid,m); 
+        return m; 
+      });
+      if(guest) lsDel(GUEST_KEY);
       setSyncState('saved');
-    }).catch(function(){});
+      setLoading(false); // ← data loaded
+    }).catch(function(){ 
+      if(alive) setLoading(false); // even on error, stop loading
+    });
     try{ unsub = cloud.subscribe(uid, function(d){ if(alive && d) setDoc(function(prev){ const m=mergeDoc(prev,d); lsSet(userKey(uid),m); return m; }); }); }catch(e){}
     return ()=>{ alive=false; if(unsub){ try{unsub();}catch(e){} } };
   },[uid,signedIn]);
+
   // flush to cloud when the tab is hidden/closed (signed in only)
   useEffect(()=>{
     if(!signedIn || !cloud.ok) return;
@@ -198,8 +229,10 @@ function useCloudProgress(user, level){
     try{ document.addEventListener('visibilitychange',onVis); window.addEventListener('pagehide',flush); }catch(e){}
     return ()=>{ try{ document.removeEventListener('visibilitychange',onVis); window.removeEventListener('pagehide',flush); }catch(e){} };
   },[uid,signedIn]);
+
   // remember which level the user was last on
   const setLevelPref=(lv)=>{ setDoc(prev=>{ const next=Object.assign({},prev,{activeLevel:lv}); persist(next); return next; }); };
+
   // updaters use Object.assign(prev,...) so every field (examDate, daily, mockHistory, …) is preserved within the level slice
   const markKnown=(deck,front)=>commit(prev=>{ const d=Object.assign({},(prev.known||{})[deck]||{}); if(d[front])delete d[front]; else d[front]=1; const known=Object.assign({},prev.known); known[deck]=d; return Object.assign({},prev,{known:known}); });
   const setBest=(mode,score)=>commit(prev=>{ const best=Object.assign({},prev.best); best[mode]=Math.max(best[mode]||0,score); return Object.assign({},prev,{best:best}); });
@@ -207,7 +240,7 @@ function useCloudProgress(user, level){
     const srs=Object.assign({}, prev.srs||{}); const dd=Object.assign({}, srs[deck]||{});
     const prevCard=dd[front];
     const ns=srsUpdate(prevCard, grade);
-    ns.first = (prevCard && prevCard.first) ? prevCard.first : dayStr(); // creation day → drives per-day new limit
+    ns.first = (prevCard && prevCard.first) ? prevCard.first : dayStr();
     dd[front]=ns; srs[deck]=dd;
     const known=Object.assign({}, prev.known); const kd=Object.assign({}, known[deck]||{});
     if(grade!=='again' && ns.reps>=2) kd[front]=1; if(grade==='again') delete kd[front];
@@ -229,12 +262,9 @@ function useCloudProgress(user, level){
     const keys=Object.keys(daily).sort(); while(keys.length>7){ delete daily[keys.shift()]; }
     return Object.assign({},prev,{daily:daily});
   });
-  // rolling per-section accuracy (last 30 attempts/section) — recent ability, not lifetime
   const recordAttempt=(section,correct)=>commit(prev=>{ if(!section)return prev; const ss=Object.assign({},prev.secStats||{}); ss[section]=(ss[section]||[]).concat([correct?1:0]).slice(-30); return Object.assign({},prev,{secStats:ss}); });
-  // mistake queue: only question-type mistakes (quiz/reading/mock); deduped; capped 100
   const addMistake=(item)=>commit(prev=>{ if(!item||item.prompt==null)return prev; const key=(item.section||'')+'|'+item.prompt+'|'+item.correct; const list=(prev.mistakes||[]).filter(function(m){return ((m.section||'')+'|'+m.prompt+'|'+m.correct)!==key;}); list.push(Object.assign({},item,{t:Date.now()})); return Object.assign({},prev,{mistakes:list.slice(-100)}); });
   const clearMistake=(key)=>commit(prev=>{ const list=(prev.mistakes||[]).filter(function(m){return ((m.section||'')+'|'+m.prompt+'|'+m.correct)!==key;}); return Object.assign({},prev,{mistakes:list}); });
-  // one-shot batch (used by the mock so a whole exam = a single write)
   const recordBatch=(attempts, mistakeItems)=>commit(prev=>{
     const ss=Object.assign({}, prev.secStats||{});
     (attempts||[]).forEach(function(a){ if(a.section) ss[a.section]=(ss[a.section]||[]).concat([a.ok?1:0]).slice(-30); });
@@ -242,12 +272,33 @@ function useCloudProgress(user, level){
     (mistakeItems||[]).forEach(function(item){ if(item&&item.prompt!=null){ const key=(item.section||'')+'|'+item.prompt+'|'+item.correct; list=list.filter(function(m){return ((m.section||'')+'|'+m.prompt+'|'+m.correct)!==key;}); list.push(Object.assign({},item,{t:Date.now()})); } });
     return Object.assign({},prev,{secStats:ss, mistakes:list.slice(-100)});
   });
-  const prog = (doc.levels&&doc.levels[level]) || {known:{},best:{},srs:{}};
-  // due-review counts for every level (so the home screen can nudge you to the other level)
-  const levelDue={}; try{ (typeof LEVEL_ORDER!=='undefined'?LEVEL_ORDER:[]).forEach(function(id){ levelDue[id]=dueCount(((doc.levels||{})[id]||{}).srs); }); }catch(e){}
-  return { prog, loaded:true, signedIn, activeLevel:doc.activeLevel, levelDue, setLevelPref, markKnown, setBest, reviewCard, setGoal, addMockResult, setExamDate, toggleDaily, recordAttempt, addMistake, clearMistake, recordBatch, syncState };
-}
 
+  const prog = (doc.levels&&doc.levels[level]) || {known:{},best:{},srs:{}};
+  const levelDue={}; 
+  try{ (typeof LEVEL_ORDER!=='undefined'?LEVEL_ORDER:[]).forEach(function(id){ levelDue[id]=dueCount(((doc.levels||{})[id]||{}).srs); }); }catch(e){}
+
+  return { 
+    prog, 
+    loaded: true, 
+    loading,            // ← NEW: loading state
+    signedIn, 
+    activeLevel: doc.activeLevel, 
+    levelDue, 
+    setLevelPref, 
+    markKnown, 
+    setBest, 
+    reviewCard, 
+    setGoal, 
+    addMockResult, 
+    setExamDate, 
+    toggleDaily, 
+    recordAttempt, 
+    addMistake, 
+    clearMistake, 
+    recordBatch, 
+    syncState 
+  };
+}
 /* ---------- voice (Web Speech API) ---------- */
 let JA_VOICE = null;
 function _loadVoices(){ try{ const vs=window.speechSynthesis.getVoices()||[]; JA_VOICE=vs.filter(v=>v.lang&&v.lang.toLowerCase().indexOf('ja')===0)[0]||null; }catch(e){} }
@@ -1775,6 +1826,14 @@ function App({user,onSignIn,onSignOut}){
   // some views don't exist for every level (no kana/numbers at N4) — fall back to home
   const allowed = view==='home'||view==='kanji'||view==='vocab'||view==='grammar'||view==='practice'||(view==='kana'&&LEVEL_META.hasKana)||(view==='numbers'&&LEVEL_META.hasNumbers);
   const v = allowed ? view : 'home';
+
+  
+  // ---- If data is still loading, show splash ----
+  if (cp.loading) {
+    return <Splash />;
+  }
+
+
   return (
     <div className="app">
       <Nav view={v} navigate={navigate} user={user} onSignIn={onSignIn} onSignOut={onSignOut} syncState={cp.syncState} level={level} setLevel={setLevel}/>
@@ -1816,26 +1875,62 @@ class ErrorBoundary extends React.Component{
 
 /* ---------- root (guest-first; Google sign-in is optional sync, never a gate) ---------- */
 function RootApp(){
-  const [user,setUser] = useState(null); // null = guest (default — app works immediately)
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true); // ← NEW: Prevent rendering until auth resolves
+
   useEffect(()=>{
-    let alive=true, unsub=null, tries=0;
-    const begin=()=>{
-      cloud.init();
-      if(!cloud.ok) return;  // no Firebase → stay guest (local only), no error screen
-      unsub = cloud.onAuth(function(fu){ if(alive) setUser(fu ? {uid:fu.uid, email:fu.email||'', name:(fu.displayName||fu.email||'You').split('@')[0]} : null); });
+    let alive = true;
+    let unsub = null;
+    let timeoutId = null;
+
+    cloud.init();
+    
+    // If Firebase isn't configured, just stop loading and stay guest
+    if(!cloud.ok){
+      if(alive) setAuthLoading(false);
+      return;
+    }
+
+    unsub = cloud.onAuth(function(fu){ 
+      if(alive) {
+        setUser(fu ? {uid:fu.uid, email:fu.email||'', name:(fu.displayName||fu.email||'You').split('@')[0]} : null);
+        setAuthLoading(false); // ← Auth resolved, we can render the app
+      }
+    });
+
+    // Safety fallback: if the auth listener never fires (rare), stop loading after 2s
+    timeoutId = setTimeout(() => {
+      if(alive && authLoading) {
+        setAuthLoading(false);
+      }
+    }, 2000);
+
+    return ()=>{
+      alive = false;
+      if(unsub) try{ unsub(); }catch(e){}
+      if(timeoutId) clearTimeout(timeoutId);
     };
-    const tick=()=>{
-      if(!alive) return;
-      if(cloud.ready()){ begin(); return; }
-      if(tries++ > 240) return;   // give up waiting for the SDK; guest still works
-      setTimeout(tick, 50);
-    };
-    tick();
-    return ()=>{ alive=false; if(unsub){ try{unsub();}catch(e){} } };
-  },[]);
-  const signIn = ()=>{ try{ if(!cloud.ok) cloud.init(); if(cloud.ok) return cloud.signInGoogle(); }catch(e){ return Promise.reject(e); } return Promise.reject(new Error('Sign-in unavailable')); };
-  const signOut = ()=>{ try{ cloud.signOut(); }catch(e){} setUser(null); };
-  return <App key={user?user.uid:'guest'} user={user} onSignIn={signIn} onSignOut={signOut}/>;
+  }, []);
+
+  const signIn = ()=>{ 
+    try{ 
+      if(!cloud.ok) cloud.init(); 
+      if(cloud.ok) return cloud.signInGoogle(); 
+    }catch(e){ return Promise.reject(e); } 
+    return Promise.reject(new Error('Sign-in unavailable')); 
+  };
+
+  const signOut = ()=>{ 
+    try{ cloud.signOut(); }catch(e){} 
+    setUser(null); 
+  };
+
+  // ← NEW: Don't show the app until auth is resolved
+  if (authLoading) {
+    return <Splash />;
+  }
+
+  return <App key={user ? user.uid : 'guest'} user={user} onSignIn={signIn} onSignOut={signOut}/>;
 }
 function Root(){ return <ErrorBoundary><RootApp/></ErrorBoundary>; }
 
