@@ -19,6 +19,13 @@
   --jp:"Noto Sans JP",system-ui,sans-serif;
   --ui:"Inter",system-ui,-apple-system,sans-serif;
 }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  /* 🔥 ADD THIS LINE TO REMOVE THE BLUE TAP GLOW GLOBALLY */
+  -webkit-tap-highlight-color: transparent;
+}
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{
