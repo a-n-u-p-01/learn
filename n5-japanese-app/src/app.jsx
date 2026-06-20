@@ -688,33 +688,144 @@ function KanaView({nav}){
   );
 }
 
-/* ---------- kanji ---------- */
-function KanjiView({nav}){
-  const [q,setQ] = useState('');
-  const list = useMemo(()=>{ const s=q.trim().toLowerCase(); if(!s)return KANJI;
-    return KANJI.filter(k=> k.c.includes(s)||k.mean.toLowerCase().includes(s)||k.on.toLowerCase().includes(s)||k.kun.toLowerCase().includes(s)||k.ex.toLowerCase().includes(s)); },[q]);
+
+export default function KanjiView({ nav }) {
+  const [q, setQ] = useState('');
+
+  const list = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return KANJI;
+
+    return KANJI.filter(k =>
+      (k.c && k.c.includes(s)) ||
+      (k.mean || '').toLowerCase().includes(s) ||
+      (k.on || '').toLowerCase().includes(s) ||
+      (k.kun || '').toLowerCase().includes(s) ||
+      (k.kunSentence || '').toLowerCase().includes(s) ||
+      (k.onSentence || '').toLowerCase().includes(s)
+    );
+  }, [q]);
+
   return (
     <section className="block wrap">
       <div className="shead">
-        <div><div className="ey">{KANJI.length} characters</div><h2>Kanji</h2><p>On'yomi in katakana, kun'yomi in hiragana, with a spoken example word.</p></div>
-        <input className="btn" style={{minWidth:'200px'}} placeholder="Search kanji or meaning…" value={q} onChange={e=>setQ(e.target.value)}/>
+        <div>
+          <div className="ey">{KANJI.length} characters</div>
+          <h2>Kanji</h2>
+          <p>Learn kanji through readings and real examples.</p>
+        </div>
+
+        <input
+          className="btn"
+          style={{ minWidth: '200px' }}
+          placeholder="Search kanji or meaning…"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+        />
       </div>
-      {nav && <div className="prac-cta"><span>Test your kanji meanings.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','kanji')}>✦ Practice kanji →</button></div>}
-      <div className="kanji-grid">
-        {list.map((k,i)=>(
-          <div className="kj" key={k.c+i}>
-            <div className="big">{k.c}</div>
-            <div className="meta">
-              <div className="mean-row"><span className="mean">{k.mean}</span><SpeakBtn text={exWord(k.ex)} label={k.mean}/></div>
-              <div className="rd">音 {k.on}　訓 {k.kun}</div>
-              <div className="ex">{k.ex}</div>
-            </div>
+
+      <details className="kanji-guide">
+        <summary className="kanji-guide-summary">
+          📖 Reading Guide
+        </summary>
+        <div className="kanji-guide-content">
+          <p>Most kanji have two common readings.</p>
+          <div className="guide-section">
+            <div className="guide-label">訓 (Japanese Reading)</div>
+            <div className="guide-text">Usually the reading you will hear in everyday Japanese words.</div>
           </div>
-        ))}
+          <div className="guide-section">
+            <div className="guide-label">音 (Chinese Reading)</div>
+            <div className="guide-text">Usually the reading you will see in many kanji-based words.</div>
+          </div>
+          <div className="guide-note">
+            ✓ Learn both readings<br/>
+            ✓ Learn the examples and sentences<br/>
+            ✓ Do not worry about memorizing rules
+          </div>
+        </div>
+      </details>
+
+      {nav && (
+        <div className="prac-cta">
+          <span>Test your kanji meanings.</span>
+          <button
+            className="btn primary sm"
+            onClick={() => nav('practice', 'quiz', 'kanji')}
+          >
+            ✦ Practice kanji →
+          </button>
+        </div>
+      )}
+
+      {/* Main layout track container */}
+      <div className="kanji-grid-container">
+        <div className="kanji-grid">
+          {list.map((k, i) => (
+            <div className="kj" key={k.c + i}>
+              <div className="big">{k.c}</div>
+              <div className="mean">{k.mean}</div>
+
+              {/* Japanese Section */}
+              {k.kun && k.kun !== '—' && k.kun !== '-' && (
+                <div className="reading-section ja-theme">
+                  <div className="reading-row">
+                    <span className="reading-value">
+                      <span className="lang-badge">訓</span> {displayReading(k.kun)}
+                    </span>
+                    <SpeakBtn text={displayReading(k.kun)} label="Japanese Reading" />
+                  </div>
+                  
+                  {k.kunSentence && k.kunSentence !== '—' && k.kunSentence !== '-' && (
+                    <div className="sentence-block">
+                      <div className="sentence-head">
+                        <div className="sentence-jp">{k.kunSentence}</div>
+                        <SpeakBtn text={k.kunSentence} label="Example Sentence" />
+                      </div>
+                      <div className="sentence-kana">{k.kunSentenceKana}</div>
+                      <div className="sentence-en">{k.kunSentenceEn}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Chinese Section */}
+              {k.on && k.on !== '—' && k.on !== '-' && (
+                <div className="reading-section zh-theme">
+                  <div className="reading-row">
+                    <span className="reading-value">
+                      <span className="lang-badge">音</span> {k.on}
+                    </span>
+                    <SpeakBtn text={k.on} label="Chinese Reading" />
+                  </div>
+
+                  {k.onSentence && k.onSentence !== '—' && k.onSentence !== '-' && (
+                    <div className="sentence-block">
+                      <div className="sentence-head">
+                        <div className="sentence-jp">{k.onSentence}</div>
+                        <SpeakBtn text={k.onSentence} label="Example Sentence" />
+                      </div>
+                      <div className="sentence-kana">{k.onSentenceKana}</div>
+                      <div className="sentence-en">{k.onSentenceEn}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
-      {list.length===0 && <p className="muted center" style={{marginTop:30}}>No kanji match “{q}”.</p>}
+
+      {list.length === 0 && (
+        <p className="muted center" style={{ marginTop: 30 }}>
+          No kanji match "{q}".
+        </p>
+      )}
     </section>
   );
+}
+function displayReading(reading){
+  return reading.replace(/[()]/g,'');
 }
 
 /* ---------- vocab ---------- */
@@ -808,10 +919,15 @@ function NumbersView(){
 function buildDeck(id){
   if(id==='hira') return KANA_HIRA.map(x=>({front:x.k,back:x.r,tag:'Hiragana',fc:'jp',say:x.k}));
   if(id==='kata') return KANA_KATA.map(x=>({front:x.k,back:x.r,tag:'Katakana',fc:'jp',say:x.k}));
-  if(id==='kanji') return KANJI.map(k=>({front:k.c,back:k.mean,sub:'音 '+k.on+'　訓 '+k.kun,sub2:k.ex,tag:'Kanji',fc:'jp',say:exWord(k.ex)}));
-  if(id==='grammar') return GRAMMAR.map(g=>({front:g.point,back:g.meaning,sub:g.explain,sub2:(g.ex&&g.ex[0])?(g.ex[0].jp+' — '+g.ex[0].en):'',tag:'Grammar',fc:'jpw',say:(g.ex&&g.ex[0])?g.ex[0].jp:g.point}));
+if(id==='kanji') { return KANJI.map(k => ({ front: k.c, back: k.mean, sub: [ k.kun && k.kun !== '—' ? `訓 ${displayReading(k.kun)}` : null, k.on && k.on !== '—' ? `音 ${k.on}` : null ] .filter(Boolean) .join('　'), sub2:  k.kunSentence ? `${k.kunSentence}\n${k.kunSentenceKana}` : `${k.onSentence}\n${k.onSentenceKana}`, tag: 'Kanji', fc: 'jp', say: kanjiReadingText(k)})); } 
+if(id==='grammar') return GRAMMAR.map(g=>({front:g.point,back:g.meaning,sub:g.explain,sub2:(g.ex&&g.ex[0])?(g.ex[0].jp+' — '+g.ex[0].en):'',tag:'Grammar',fc:'jpw',say:(g.ex&&g.ex[0])?g.ex[0].jp:g.point}));
   return VOCAB.map(v=>({front:v.jp,back:v.en,sub:v.kana+' · '+v.romaji,tag:v.cat,fc:'jpw',say:v.kana}));
 }
+
+function kanjiReadingText(k) {
+ return k.kun && k.kun !== '—' ? displayReading(k.kun) : k.on;
+}
+
 function Flashcards({cp}){
   const D0 = (DECKS[0]&&DECKS[0][0]) || 'vocab';   // first deck of the active level (Hiragana on N5, Kanji on N4)
   const [deckId,setDeckId] = useState(D0);
@@ -875,9 +991,9 @@ function makeQuestions(mode, cat){
   }
   var pool, kind;
   if(mode==='kana'){ const s=KANA.hiragana,k=KANA.katakana; pool=[...s.base,...s.dakuten,...k.base].map(x=>({p:x.k,a:x.r,say:x.k})); kind='jp-big'; }
-  else if(mode==='kanji'){ pool=KANJI.map(k=>({p:k.c,a:k.mean,say:exWord(k.ex)})); kind='jp-big'; }
+  else if(mode==='kanji'){ pool=KANJI.map(k=>({p:k.c,a:k.mean,say:kanjiReadingText(k)})); kind='jp-big'; }
   else { const vl=useCat?VOCAB.filter(function(v){return v.cat===cat;}):VOCAB; pool=vl.map(v=>({p:v.jp,a:v.en,say:v.kana,sub:v.kana})); kind='jp-med'; }
-  const allA=pool.map(x=>x.a);
+  const allA=pool.map(x=>x.a);  
   return shuffle(pool).slice(0,10).map(function(it){ return {kind:kind, prompt:it.p, sub:it.sub, say:it.say, correct:it.a, options:buildOptions(it.a, allA)}; });
 }
 function Quiz({cp, initialMode}){
