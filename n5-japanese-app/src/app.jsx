@@ -1021,7 +1021,16 @@ function buildDeck(id){
   if(id==='kata') return KANA_KATA.map(x=>({front:x.k,back:x.r,tag:'Katakana',fc:'jp',say:x.k}));
 if(id==='kanji') { return KANJI.map(k => ({ front: k.c, back: k.mean, sub: [ k.kun && k.kun !== '—' ? `訓 ${displayReading(k.kun)}` : null, k.on && k.on !== '—' ? `音 ${k.on}` : null ] .filter(Boolean) .join('　'), sub2:  k.kunSentence ? `${k.kunSentence}\n${k.kunSentenceKana}` : `${k.onSentence}\n${k.onSentenceKana}`, tag: 'Kanji', fc: 'jp', say: kanjiReadingText(k)})); } 
 if(id==='grammar') return GRAMMAR.map(g=>({front:g.point,back:g.meaning,sub:g.explain,sub2:(g.ex&&g.ex[0])?(g.ex[0].jp+' — '+g.ex[0].en):'',tag:'Grammar',fc:'jpw',say:(g.ex&&g.ex[0])?g.ex[0].jp:g.point}));
-  return VOCAB.map(v=>({front:v.jp,back:v.en,sub:v.kana+' · '+v.romaji,tag:v.cat,fc:'jpw',say:v.kana}));
+  return VOCAB.map(v=>({
+  front:v.jp,
+  back:v.en,
+  sub:v.kana,
+  sub2:v.sentence,
+  sub3:v.sentenceEn,
+  tag:v.cat,
+  fc:'jpw',
+  say:v.kana
+}));
 }
 
 function kanjiReadingText(k) {

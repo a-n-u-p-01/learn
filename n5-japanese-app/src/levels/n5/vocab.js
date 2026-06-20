@@ -155,7 +155,7 @@ var N5_VOCAB = [
   {jp:'料理',kana:'りょうり',romaji:'ryōri',en:'cooking, dish',cat:'Food',sentence:'料理を作ります。',sentenceKana:'りょうりをつくります。',sentenceEn:'I cook.'},
   {jp:'箸',kana:'はし',romaji:'hashi',en:'chopsticks',cat:'Food',sentence:'箸で食べます。',sentenceKana:'はしでたべます。',sentenceEn:'I eat with chopsticks.'},
   {jp:'電車',kana:'でんしゃ',romaji:'densha',en:'train',cat:'Transport',sentence:'電車に乗ります。',sentenceKana:'でんしゃにのります。',sentenceEn:'I ride the train.'},
-  {jp:'車',kana:'くるま',romaji:'kuruma',en:'car',cat:'Transport',sentence:'車で行きます。',sentenceKana:'くるまいきます。',sentenceEn:'I go by car.'},
+  {jp:'車',kana:'くるま',romaji:'kuruma',en:'car',cat:'Transport',sentence:'車で行きます。',sentenceKana:'くるまでいきます。',sentenceEn:'I go by car.'},
   {jp:'自転車',kana:'じてんしゃ',romaji:'jitensha',en:'bicycle',cat:'Transport',sentence:'自転車に乗ります。',sentenceKana:'じてんしゃにのります。',sentenceEn:'I ride a bicycle.'},
   {jp:'バス',kana:'バス',romaji:'basu',en:'bus',cat:'Transport',sentence:'バスに乗ります。',sentenceKana:'ばすにのります。',sentenceEn:'I ride the bus.'},
   {jp:'タクシー',kana:'タクシー',romaji:'takushī',en:'taxi',cat:'Transport',sentence:'タクシーで行きます。',sentenceKana:'たくしーでいきます。',sentenceEn:'I go by taxi.'},
