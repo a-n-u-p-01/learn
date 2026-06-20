@@ -751,6 +751,8 @@ function KanaView({nav}){
 
 export default function KanjiView({ nav }) {
   const [q, setQ] = useState('');
+  const [displayList, setDisplayList] = useState([]);
+  const loadTimer = useRef(null);
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -765,6 +767,17 @@ export default function KanjiView({ nav }) {
       (k.onSentence || '').toLowerCase().includes(s)
     );
   }, [q]);
+
+  // ✅ Incremental render effect (keeps everything instant)
+  useEffect(() => {
+    clearTimeout(loadTimer.current);
+    // Show first 20 instantly, append the rest after 300ms
+    setDisplayList(list.slice(0, 20));
+    loadTimer.current = setTimeout(() => {
+      setDisplayList(list);
+    }, 300);
+    return () => clearTimeout(loadTimer.current);
+  }, [list]);
 
   return (
     <section className="block wrap">
@@ -821,7 +834,8 @@ export default function KanjiView({ nav }) {
       {/* Main layout track container */}
       <div className="kanji-grid-container">
         <div className="kanji-grid">
-          {list.map((k, i) => (
+          {/* ✅ CHANGED: map over displayList instead of the full list */}
+          {displayList.map((k, i) => (
             <div className="kj" key={k.c + i}>
               <div className="big">{k.c}</div>
               <div className="mean">{k.mean}</div>
@@ -887,15 +901,43 @@ export default function KanjiView({ nav }) {
 function displayReading(reading){
   return reading.replace(/[()]/g,'');
 }
-
-/* ---------- vocab ---------- */
-
 function VocabView({ nav }) {
   const cats = useMemo(() => ['All', ...Array.from(new Set(VOCAB.map(v => v.cat)))], []);
   const [cat, setCat] = useState('All');
   const [expandedRows, setExpandedRows] = useState({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
 
-  const list = cat === 'All' ? VOCAB : VOCAB.filter(v => v.cat === cat);
+  // ✅ 1. Create a ref for the table
+  const tableRef = useRef(null);
+
+  // ✅ Search + Category filter
+  const list = useMemo(() => {
+    let items = cat === 'All' ? VOCAB : VOCAB.filter(v => v.cat === cat);
+    const s = searchQuery.trim().toLowerCase();
+    if (s) {
+      items = items.filter(v =>
+        (v.jp || '').toLowerCase().includes(s) ||
+        (v.kana || '').toLowerCase().includes(s) ||
+        (v.en || '').toLowerCase().includes(s) ||
+        (v.romaji || '').toLowerCase().includes(s)
+      );
+    }
+    return items;
+  }, [cat, searchQuery]);
+
+  // ✅ Reset page whenever search or category changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [list]);
+
+  // ✅ Pagination logic
+  const totalPages = Math.ceil(list.length / ITEMS_PER_PAGE) || 1;
+  const paginatedList = list.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE, 
+    currentPage * ITEMS_PER_PAGE
+  );
 
   const toggleRow = (id) => {
     setExpandedRows(prev => ({
@@ -912,12 +954,19 @@ function VocabView({ nav }) {
           <h2>Vocabulary</h2>
           <p>Filter by theme. Click any row to view its usage example in context.</p>
         </div>
+        <input
+          className="btn"
+          style={{ minWidth: '200px' }}
+          placeholder="Search words or meanings…"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
       </div>
 
       {nav && (
-        <div className="prac-cta">
+        <div className="prac-cta" >
           <span>Turn reading into recall — quiz yourself on these words.</span>
-          <button className="btn primary sm" onClick={() => nav('practice', 'quiz', 'vocab')}>
+          <button className="btn primary sm" ref={tableRef} onClick={() => nav('practice', 'quiz', 'vocab')}>
             ✦ Practice vocab →
           </button>
         </div>
@@ -931,6 +980,7 @@ function VocabView({ nav }) {
         ))}
       </div>
 
+      {/* ✅ 2. Attach the ref to the vtable */}
       <div className="vtable">
         <div className="vhead">
           <span className="vhead-control"></span>
@@ -939,7 +989,7 @@ function VocabView({ nav }) {
           <span>Meaning</span>
         </div>
 
-        {list.map((v, i) => {
+        {paginatedList.map((v, i) => {
           const rowId = v.jp + i;
           const isExpanded = !!expandedRows[rowId];
 
@@ -948,7 +998,6 @@ function VocabView({ nav }) {
               className={cx('vrow-group', isExpanded && 'is-expanded')} 
               key={rowId}
             >
-              {/* Primary Interactive Row Track */}
               <div 
                 className="vrow" 
                 onClick={() => toggleRow(rowId)}
@@ -973,7 +1022,6 @@ function VocabView({ nav }) {
                 <div className="en">
                   <div className="en-wrap">
                     <span>{v.en}</span>
-                    {/* Stop propagation prevents row collapse when clicking word audio */}
                     <div onClick={(e) => e.stopPropagation()}>
                       <SpeakBtn text={v.kana} label={v.en} />
                     </div>
@@ -981,7 +1029,6 @@ function VocabView({ nav }) {
                 </div>
               </div>
 
-              {/* Expandable Structural Context Drawer */}
               <div className="vrow-drawer" aria-hidden={!isExpanded}>
                 <div className="vrow-drawer-inner">
                   {v.sentence && v.sentence !== '—' && v.sentence !== '-' ? (
@@ -992,10 +1039,7 @@ function VocabView({ nav }) {
                           <div className="v-sentence-jp">{v.sentence}</div>
                           <div className="v-sentence-kana">{v.sentenceKana}</div>
                           <div className="v-sentence-en">{v.sentenceEn}<SpeakBtn text={v.sentence} label="Example Sentence" /></div>
-                            
-                       
                         </div>
-                      
                       </div>
                     </div>
                   ) : (
@@ -1009,9 +1053,42 @@ function VocabView({ nav }) {
           );
         })}
       </div>
+
+      {/* ✅ 3. Use scrollIntoView on the tableRef, not window */}
+      {totalPages > 1 && (
+        <div className="pagination" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '14px', marginTop: '20px' }}>
+          
+          <button 
+            className="btn sm" 
+            disabled={currentPage === 1} 
+            onClick={() => setCurrentPage(p => p - 1)}
+          >
+            ‹ Prev
+          </button>
+          
+          <span className="muted" style={{ fontSize: '13px', fontWeight: '600' }}>
+            {currentPage} / {totalPages}
+          </span>
+
+          <button 
+            className="btn sm" 
+            disabled={currentPage === totalPages} 
+            onClick={() => {
+              setCurrentPage(p => p + 1);
+              // Scroll the vtable into view, aligned to the top of the viewport
+              if (tableRef.current) {
+                tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            }}
+          >
+            Next ›
+          </button>
+        </div>
+      )}
     </section>
   );
 }
+
 /* ---------- grammar ---------- */
 function GrammarView({nav}){
   return (

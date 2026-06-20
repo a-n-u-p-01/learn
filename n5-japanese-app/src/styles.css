@@ -566,6 +566,66 @@ section{scroll-margin-top:84px}
   font-size:12.5px;
   color:var(--faint);
 }
+/* ---------- Minimalist Dashboard Table Pagination Controls ---------- */
+.v-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+.v-pg-info {
+  font-family: var(--ui);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.v-pg-info strong {
+  color: var(--fg);
+}
+
+.v-pg-btn {
+  background: var(--bg-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--r) - 4px);
+  padding: 6px 14px;
+  font-family: var(--ui);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.v-pg-btn:hover:not(:disabled) {
+  background: var(--bg-3);
+  border-color: var(--line-2);
+}
+
+.v-pg-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.v-pg-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: transparent;
+}
+
+@media (max-width: 480px) {
+  .v-pagination {
+    gap: 8px;
+  }
+  .v-pg-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
 /* ---------- vocabulary table redesign ---------- */
 .vtable {
   background: var(--bg-1);
@@ -1293,16 +1353,40 @@ justify-content: space-between;
 .botnav{display:none}
 @media(max-width:760px){
   .nav .tabs{display:none}
-  .botnav{
-    display:grid;grid-template-columns:repeat(6,1fr);gap:2px;
-    position:fixed;left:0;right:0;bottom:0;z-index:60;
-    background:rgba(12,13,16,.92);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
-    border-top:1px solid var(--line);
-    padding:8px 4px calc(8px + env(safe-area-inset-bottom));
-  }
-  .botitem{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-    background:none;border:none;cursor:pointer;color:var(--faint);font-family:inherit;
-    padding:4px 2px;border-radius:11px;min-height:46px;transition:color .15s,transform .12s}
+ .botnav {
+  display: flex;                    /* Switch from grid to flex */
+  justify-content: center;          /* Center the flex items */
+  align-items: stretch;             /* Make them stretch equally */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: rgba(12,13,16,.92);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid var(--line);
+  padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
+}
+
+.botitem {
+  flex: 1;                          /* Forces every item to share the total width equally */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--faint);
+  font-family: inherit;
+  padding: 4px 2px;
+  border-radius: 11px;
+  min-height: 46px;
+  transition: color .15s, transform .12s;
+  text-align: center;               /* Ensures text centers perfectly inside its equal width */
+}
   .botitem .bi{font-family:var(--jp);font-size:20px;line-height:1;font-weight:500}
   .botitem .bl{font-size:10px;font-weight:600;letter-spacing:.005em}
   .botitem.on{color:var(--accent-2)}
