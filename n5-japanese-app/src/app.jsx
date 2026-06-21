@@ -495,13 +495,13 @@ function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel,the
 function BottomNav({view,navigate}){
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   // Inside your Nav component
-const [deferredPrompt, setDeferredPrompt] = useState(null);
 
 useEffect(() => {
   const handleInstall = (e) => {
     e.preventDefault(); // Prevent the browser from showing its own infobar
     setDeferredPrompt(e); // Store the event so we can trigger it manually
   };
+  console.log("install event: ",  deferredPrompt);
   window.addEventListener('beforeinstallprompt', handleInstall);
   return () => window.removeEventListener('beforeinstallprompt', handleInstall);
 }, []);
