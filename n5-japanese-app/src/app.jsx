@@ -36,7 +36,7 @@ function useHashRoute(){
 /* ===== CLOUD:MODULAR — modular Firebase SDK (Vite build) ===== */
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { FIREBASE_CONFIG } from './firebase-config.js';
 const cloud = {
   ok: false,
@@ -84,22 +84,29 @@ const cloud = {
     } catch (e) {}
   },
 
-  load(uid) {
-    if (!this._ensure()) return Promise.reject(new Error('Firestore not initialised'));
-    return getDoc(doc(this.db, 'progress', uid)).then(s =>
-      s.exists() ? s.data().data || null : null
-    );
-  },
+ load(uid) {
+  if (!this._ensure()) return Promise.reject(new Error('Firestore not initialised'));
+  return getDoc(doc(this.db, 'progress', uid)).then(snap => {
+    if (!snap.exists()) return null;
+    return {
+      version: snap.data().version || 0,
+      data: snap.data().data || {}
+    };
+  });
+},
 
-  save(uid, data) {
-    if (!this._ensure()) return Promise.reject(new Error('Firestore not initialised'));
-    return setDoc(
-      doc(this.db, 'progress', uid),
-      { data, updatedAt: new Date().toISOString() },
-      { merge: true }
-    );
-  },
-
+save(uid, data, version) {
+  if (!this._ensure()) return Promise.reject(new Error('Firestore not initialised'));
+  return setDoc(
+    doc(this.db, 'progress', uid),
+    {
+      version: version || 0,
+      updatedAt: serverTimestamp(),  // <-- Firebase server time
+      data: data || {}
+    },
+    { merge: true }
+  );
+},
   subscribe(uid, cb) {
     if (!this._ensure()) return function () {};
     return onSnapshot(
@@ -228,15 +235,23 @@ function useCloudProgress(user, level) {
   const [doc, setDoc] = useState(getLocalDoc);
   const [connectionStatus, setConnectionStatus] = useState(signedIn ? 'offline' : 'local');
 
-  const timer = useRef(null);
+  // ---- Refs ----
   const docRef = useRef(doc);
   useEffect(() => { docRef.current = doc; }, [doc]);
 
-  // ---- Persist: local storage always, cloud polling will handle saving ----
+  const dirtyRef = useRef(false);
+  const localVersionRef = useRef(0);
+  const remoteVersionRef = useRef(0);
+  const syncingRef = useRef(false);
+
+  const saveTimer = useRef(null);
+  const syncTimer = useRef(null);
+
+  // ---- Persist: local storage only, marks dirty ----
   const persist = (next) => {
     if (signedIn) {
       lsSet(userKey(uid), next);
-      // We'll let the polling interval handle cloud save; no status change here
+      dirtyRef.current = true;
     } else {
       lsSet(GUEST_KEY, next);
       setConnectionStatus('local');
@@ -256,52 +271,162 @@ function useCloudProgress(user, level) {
     });
   }, [uid, level, signedIn]);
 
+// ---- SaveWorker (every 5 sec if dirty) ----
 useEffect(() => {
-  const handleOnline = () => {
-    // Check if Firebase is actually reachable
-    cloud.load(uid)
-      .then(() => setConnectionStatus('synced'))
-      .catch(() => setConnectionStatus('offline'));
-  };
-  const handleOffline = () => setConnectionStatus('offline');
+  if (!signedIn) return;
 
-  window.addEventListener('online', handleOnline);
-  window.addEventListener('offline', handleOffline);
+  saveTimer.current = setInterval(async () => {
+ 
 
-  // Set initial status
-  if (navigator.onLine) {
-    cloud.load(uid)
-      .then(() => setConnectionStatus('synced'))
-      .catch(() => setConnectionStatus('offline'));
-  } else {
-    setConnectionStatus('offline');
+    if (syncingRef.current) {
+      return;
+    }
+    if (!dirtyRef.current) {
+      return;
+    }
+
+    syncingRef.current = true;
+    setConnectionStatus('syncing');
+
+    try {
+      const snapshot = docRef.current;
+      if (!snapshot) {
+        return;
+      }
+      const remote = await cloud.load(uid);
+     
+
+      const remoteVersion = remote?.version || 0;
+      const localVersion = localVersionRef.current || 0;
+
+
+      let docToSave = snapshot;
+      let newVersion = localVersion + 1;
+
+      if (remote && remoteVersion > localVersion) {
+        const merged = mergeDoc(snapshot, migrateDoc(remote.data));
+
+        docRef.current = merged;
+        setDoc(merged);
+        lsSet(userKey(uid), merged);
+        docToSave = merged;
+        newVersion = remoteVersion + 1;
+      }
+
+      await cloud.save(uid, docToSave, newVersion);
+
+      localVersionRef.current = newVersion;
+      remoteVersionRef.current = newVersion;
+      setConnectionStatus('synced');
+
+      if (docRef.current !== docToSave) {
+        dirtyRef.current = true;
+      } else {
+        dirtyRef.current = false;
+      }
+
+    } catch (err) {
+      console.error('[SaveWorker] Save error:', err);
+      setConnectionStatus('offline');
+    } finally {
+      // ⚠️ ALWAYS release the lock
+      syncingRef.current = false;
+    }
+  }, 5000);
+
+  return () => clearInterval(saveTimer.current);
+}, [signedIn, uid]);
+
+  // ---- SyncWorker (every 30 sec) ----
+const checkRemote = useCallback(async () => {
+  if (syncingRef.current) return;
+
+  try {
+    const remote = await cloud.load(uid);
+    if (!remote) return;
+
+    remoteVersionRef.current = remote.version;
+
+    if (remote.version <= localVersionRef.current) return;
+
+    const snapshot = docRef.current;
+    const merged = mergeDoc(snapshot, migrateDoc(remote.data));
+
+    if (docRef.current === snapshot) {
+      docRef.current = merged;
+      setDoc(merged);
+      lsSet(userKey(uid), merged);
+    } else {
+      const latestMerged = mergeDoc(docRef.current, migrateDoc(remote.data));
+      docRef.current = latestMerged;
+      setDoc(latestMerged);
+      lsSet(userKey(uid), latestMerged);
+    }
+
+    localVersionRef.current = remote.version;
+    setConnectionStatus('synced');
+  } catch (e) {
+    // ignore
   }
-
-  return () => {
-    window.removeEventListener('online', handleOnline);
-    window.removeEventListener('offline', handleOffline);
-  };
 }, [uid]);
 
-  // ---- Immediately try a save on mount (optional) ----
   useEffect(() => {
-    if (signedIn && cloud.ok && uid && docRef.current) {
-      setConnectionStatus('syncing');
-      cloud.save(uid, docRef.current)
-        .then(() => setConnectionStatus('synced'))
-        .catch(() => setConnectionStatus('offline'));
+    if (!signedIn) return;
+
+    // Check immediately on mount
+    checkRemote();
+
+    syncTimer.current = setInterval(checkRemote, 30000);
+
+    return () => clearInterval(syncTimer.current);
+  }, [signedIn, uid]);
+
+  // ---- Visibility: poll immediately when tab becomes visible ----
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkRemote();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [checkRemote]);
+
+  // ---- Network status (only UI, no data ops) ----
+  useEffect(() => {
+    const handleOnline = () => {
+      setConnectionStatus(
+        dirtyRef.current ? 'syncing' : 'synced'
+      );
+      checkRemote(); // also check for remote changes
+    };
+    const handleOffline = () => setConnectionStatus('offline');
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    if (navigator.onLine) {
+      setConnectionStatus(dirtyRef.current ? 'syncing' : 'synced');
+    } else {
+      setConnectionStatus('offline');
     }
-  }, [signedIn, uid]); // will re-run if uid changes
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [checkRemote]);
 
   // ---- Effect: handle user changes (sign‑in / sign‑out) ----
   useEffect(() => {
     if (!signedIn) {
-      if (uid) {
-        lsDel(userKey(uid));
-      }
+      if (uid) lsDel(userKey(uid));
       const guestDoc = migrateDoc(lsGet(GUEST_KEY) || { levels: {}, activeLevel: 'n5' });
       setDoc(guestDoc);
       setConnectionStatus('local');
+      localVersionRef.current = 0;
+      remoteVersionRef.current = 0;
+      dirtyRef.current = false;
       return;
     }
 
@@ -315,18 +440,22 @@ useEffect(() => {
     }
 
     let alive = true;
-
     const guest = lsGet(GUEST_KEY);
+
     cloud.load(uid)
       .then(remote => {
         if (!alive) return;
         let merged = localDoc;
-        if (remote) merged = mergeDoc(merged, migrateDoc(remote));
+         if (remote) {
+      merged = mergeDoc(merged, migrateDoc(remote.data));
+      localVersionRef.current = remote.version || 0;
+      remoteVersionRef.current = remote.version || 0;
+    }
         if (guest) merged = mergeDoc(merged, migrateDoc(guest));
         lsSet(userKey(uid), merged);
         setDoc(merged);
         if (guest) lsDel(GUEST_KEY);
-        cloud.save(uid, merged).catch(() => {});
+        dirtyRef.current = true; // trigger SaveWorker to upload merged data
         setConnectionStatus('synced');
       })
       .catch(() => {
@@ -346,7 +475,7 @@ useEffect(() => {
     });
   };
 
-  // ---- All updaters (unchanged) ----
+  // ---- All updaters (unchanged, but now they only call commit) ----
   const markKnown = (deck, front) => commit(prev => {
     const d = Object.assign({}, (prev.known || {})[deck] || {});
     if (d[front]) delete d[front];
