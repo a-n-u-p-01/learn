@@ -39,23 +39,78 @@ import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signO
 import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { FIREBASE_CONFIG } from './firebase-config.js';
 const cloud = {
-  ok:false, auth:null, db:null,
-  init(){
-    try{
-      if(!FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey) return;
+  ok: false,
+  auth: null,
+  db: null,
+
+  init() {
+    try {
+      if (!FIREBASE_CONFIG || !FIREBASE_CONFIG.apiKey) return;
       const app = getApps().length ? getApps()[0] : initializeApp(FIREBASE_CONFIG);
       this.auth = getAuth(app);
       this.db = getFirestore(app);
       this.ok = true;
-    }catch(e){ this.ok=false; }
+    } catch (e) {
+      this.ok = false;
+    }
   },
-  ready(){ return true; },
-  onAuth(cb){ try{ return onAuthStateChanged(this.auth, cb); }catch(e){ return function(){}; } },
-  signInGoogle(){ if(!this.ok) this.init(); return signInWithPopup(this.auth, new GoogleAuthProvider()); },
-  signOut(){ try{ return fbSignOut(this.auth); }catch(e){} },
-  load(uid){ return getDoc(doc(this.db,'progress',uid)).then(function(s){ return s.exists() ? (s.data().data||null) : null; }); },
-  save(uid, data){ try{ return setDoc(doc(this.db,'progress',uid), { data, updatedAt:new Date().toISOString() }, { merge:true }).catch(function(){}); }catch(e){ return Promise.resolve(); } },
-  subscribe(uid, cb){ return onSnapshot(doc(this.db,'progress',uid), function(snap){ if(snap.metadata && snap.metadata.hasPendingWrites) return; cb(snap.exists() ? (snap.data().data||null) : null); }, function(){}); }
+
+  // Ensure db is initialised before any operation
+  _ensure() {
+    if (!this.ok || !this.db) {
+      this.init();
+    }
+    return this.ok && this.db;
+  },
+
+  onAuth(cb) {
+    try {
+      this._ensure();
+      return onAuthStateChanged(this.auth, cb);
+    } catch (e) {
+      return function () {};
+    }
+  },
+
+  signInGoogle() {
+    this._ensure();
+    if (!this.ok) return Promise.reject(new Error('Firebase not initialised'));
+    return signInWithPopup(this.auth, new GoogleAuthProvider());
+  },
+
+  signOut() {
+    try {
+      if (this.auth) return fbSignOut(this.auth);
+    } catch (e) {}
+  },
+
+  load(uid) {
+    if (!this._ensure()) return Promise.reject(new Error('Firestore not initialised'));
+    return getDoc(doc(this.db, 'progress', uid)).then(s =>
+      s.exists() ? s.data().data || null : null
+    );
+  },
+
+  save(uid, data) {
+    if (!this._ensure()) return Promise.reject(new Error('Firestore not initialised'));
+    return setDoc(
+      doc(this.db, 'progress', uid),
+      { data, updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
+  },
+
+  subscribe(uid, cb) {
+    if (!this._ensure()) return function () {};
+    return onSnapshot(
+      doc(this.db, 'progress', uid),
+      snap => {
+        if (snap.metadata && snap.metadata.hasPendingWrites) return;
+        cb(snap.exists() ? snap.data().data || null : null);
+      },
+      () => {}
+    );
+  }
 };
 /* ===== /CLOUD ===== */
 /* ---------- local store (guest-first; the app works with no account) ---------- */
@@ -159,149 +214,262 @@ function bumpStats(stats, today){
 }
 function effectiveStreak(stats){ if(!stats||!stats.lastActive)return 0; const t=dayStr(); return (stats.lastActive===t||stats.lastActive===addDays(t,-1))?(stats.streak||0):0; }
 function mergeStats(a,b){ if(!a)return b||null; if(!b)return a; const base=(a.lastActive>=b.lastActive)?a:b; const out=Object.assign({},base); out.best=Math.max(a.best||0,b.best||0); out.goal=base.goal||a.goal||b.goal||20; if(a.todayDate&&a.todayDate===b.todayDate)out.todayCount=Math.max(a.todayCount||0,b.todayCount||0); return out; }
-function useCloudProgress(user, level){
+function useCloudProgress(user, level) {
   const signedIn = !!(user && user.uid);
   const uid = signedIn ? user.uid : null;
-  const [doc,setDoc] = useState(function(){ 
-    const d = signedIn ? (lsGet(userKey(uid))||{levels:{},activeLevel:'n5'}) : (lsGet(GUEST_KEY)||{levels:{},activeLevel:'n5'});
-    return migrateDoc(d);
-  });
-  const [syncState,setSyncState] = useState(signedIn ? 'saving' : 'local'); // local | saving | saved
-  const [loading, setLoading] = useState(signedIn && cloud.ok); // ← NEW: loading state (true only when we expect cloud data)
-  const timer = useRef(null);
-  const docRef = useRef(doc);
-  useEffect(()=>{ docRef.current = doc; },[doc]);
 
-  // persist locally always; when signed in, also debounce a cloud save
-  const persist = (next)=>{
-    if(signedIn){ 
-      lsSet(userKey(uid), next); 
-      if(cloud.ok){ 
-        setSyncState('saving'); 
-        clearTimeout(timer.current); 
-        timer.current=setTimeout(function(){ 
-          cloud.save(uid,next).then(function(){ setSyncState('saved'); });
-        },500); 
-      } 
-    }
-    else { lsSet(GUEST_KEY, next); setSyncState('local'); }
+  // ---- Synchronous local storage read on every render ----
+  const getLocalDoc = () => {
+    const key = signedIn ? userKey(uid) : GUEST_KEY;
+    const d = lsGet(key) || { levels: {}, activeLevel: 'n5' };
+    return migrateDoc(d);
   };
 
-  // commit operates on the ACTIVE level's slice; the rest of the document is preserved
-  const commit = useCallback((updater)=>{
-    setDoc(prev=>{
-      const cur = (prev.levels&&prev.levels[level]) || {known:{},best:{},srs:{}};
-      const nextSlice = typeof updater==='function' ? updater(cur) : updater;
-      const levels = Object.assign({}, prev.levels); levels[level] = nextSlice;
-      const next = Object.assign({}, prev, {levels:levels});
-      persist(next); return next;
-    });
-  },[uid,level,signedIn]);
+  const [doc, setDoc] = useState(getLocalDoc);
+  const [connectionStatus, setConnectionStatus] = useState(signedIn ? 'offline' : 'local');
 
-  // when signed in: pull cloud, claim any guest progress once, then stay live-synced
-  useEffect(()=>{
-    if(!signedIn || !cloud.ok){
-      // Guest or no cloud – no data to load
-      setLoading(false);
+  const timer = useRef(null);
+  const docRef = useRef(doc);
+  useEffect(() => { docRef.current = doc; }, [doc]);
+
+  // ---- Persist: local storage always, cloud polling will handle saving ----
+  const persist = (next) => {
+    if (signedIn) {
+      lsSet(userKey(uid), next);
+      // We'll let the polling interval handle cloud save; no status change here
+    } else {
+      lsSet(GUEST_KEY, next);
+      setConnectionStatus('local');
+    }
+  };
+
+  // ---- Commit: updates active level slice ----
+  const commit = useCallback((updater) => {
+    setDoc(prev => {
+      const cur = (prev.levels && prev.levels[level]) || { known: {}, best: {}, srs: {} };
+      const nextSlice = typeof updater === 'function' ? updater(cur) : updater;
+      const levels = Object.assign({}, prev.levels);
+      levels[level] = nextSlice;
+      const next = Object.assign({}, prev, { levels });
+      persist(next);
+      return next;
+    });
+  }, [uid, level, signedIn]);
+
+useEffect(() => {
+  const handleOnline = () => {
+    // Check if Firebase is actually reachable
+    cloud.load(uid)
+      .then(() => setConnectionStatus('synced'))
+      .catch(() => setConnectionStatus('offline'));
+  };
+  const handleOffline = () => setConnectionStatus('offline');
+
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+
+  // Set initial status
+  if (navigator.onLine) {
+    cloud.load(uid)
+      .then(() => setConnectionStatus('synced'))
+      .catch(() => setConnectionStatus('offline'));
+  } else {
+    setConnectionStatus('offline');
+  }
+
+  return () => {
+    window.removeEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
+  };
+}, [uid]);
+
+  // ---- Immediately try a save on mount (optional) ----
+  useEffect(() => {
+    if (signedIn && cloud.ok && uid && docRef.current) {
+      setConnectionStatus('syncing');
+      cloud.save(uid, docRef.current)
+        .then(() => setConnectionStatus('synced'))
+        .catch(() => setConnectionStatus('offline'));
+    }
+  }, [signedIn, uid]); // will re-run if uid changes
+
+  // ---- Effect: handle user changes (sign‑in / sign‑out) ----
+  useEffect(() => {
+    if (!signedIn) {
+      if (uid) {
+        lsDel(userKey(uid));
+      }
+      const guestDoc = migrateDoc(lsGet(GUEST_KEY) || { levels: {}, activeLevel: 'n5' });
+      setDoc(guestDoc);
+      setConnectionStatus('local');
       return;
     }
-    let alive=true, unsub=null;
+
+    const localDoc = migrateDoc(lsGet(userKey(uid)) || { levels: {}, activeLevel: 'n5' });
+    setDoc(localDoc);
+    setConnectionStatus('syncing');
+
+    if (!cloud.ok) {
+      setConnectionStatus('offline');
+      return;
+    }
+
+    let alive = true;
+
     const guest = lsGet(GUEST_KEY);
-    cloud.load(uid).then(function(d){ 
-      if(!alive)return;
-      setDoc(function(prev){ 
-        let m=mergeDoc(prev,d); 
-        if(guest) m=mergeDoc(m,guest); 
-        lsSet(userKey(uid),m); 
-        cloud.save(uid,m); 
-        return m; 
+    cloud.load(uid)
+      .then(remote => {
+        if (!alive) return;
+        let merged = localDoc;
+        if (remote) merged = mergeDoc(merged, migrateDoc(remote));
+        if (guest) merged = mergeDoc(merged, migrateDoc(guest));
+        lsSet(userKey(uid), merged);
+        setDoc(merged);
+        if (guest) lsDel(GUEST_KEY);
+        cloud.save(uid, merged).catch(() => {});
+        setConnectionStatus('synced');
+      })
+      .catch(() => {
+        if (!alive) return;
+        setConnectionStatus('offline');
       });
-      if(guest) lsDel(GUEST_KEY);
-      setSyncState('saved');
-      setLoading(false); // ← data loaded
-    }).catch(function(){ 
-      if(alive) setLoading(false); // even on error, stop loading
+
+    return () => { alive = false; };
+  }, [uid, signedIn]);
+
+  // ---- Level preference ----
+  const setLevelPref = (lv) => {
+    setDoc(prev => {
+      const next = Object.assign({}, prev, { activeLevel: lv });
+      persist(next);
+      return next;
     });
-    try{ unsub = cloud.subscribe(uid, function(d){ if(alive && d) setDoc(function(prev){ const m=mergeDoc(prev,d); lsSet(userKey(uid),m); return m; }); }); }catch(e){}
-    return ()=>{ alive=false; if(unsub){ try{unsub();}catch(e){} } };
-  },[uid,signedIn]);
+  };
 
-  // flush to cloud when the tab is hidden/closed (signed in only)
-  useEffect(()=>{
-    if(!signedIn || !cloud.ok) return;
-    const flush=()=>{ clearTimeout(timer.current); try{ cloud.save(uid, docRef.current); }catch(e){} };
-    const onVis=()=>{ try{ if(document.visibilityState==='hidden') flush(); }catch(e){} };
-    try{ document.addEventListener('visibilitychange',onVis); window.addEventListener('pagehide',flush); }catch(e){}
-    return ()=>{ try{ document.removeEventListener('visibilitychange',onVis); window.removeEventListener('pagehide',flush); }catch(e){} };
-  },[uid,signedIn]);
+  // ---- All updaters (unchanged) ----
+  const markKnown = (deck, front) => commit(prev => {
+    const d = Object.assign({}, (prev.known || {})[deck] || {});
+    if (d[front]) delete d[front];
+    else d[front] = 1;
+    const known = Object.assign({}, prev.known);
+    known[deck] = d;
+    return Object.assign({}, prev, { known });
+  });
 
-  // remember which level the user was last on
-  const setLevelPref=(lv)=>{ setDoc(prev=>{ const next=Object.assign({},prev,{activeLevel:lv}); persist(next); return next; }); };
+  const setBest = (mode, score) => commit(prev => {
+    const best = Object.assign({}, prev.best);
+    best[mode] = Math.max(best[mode] || 0, score);
+    return Object.assign({}, prev, { best });
+  });
 
-  // updaters use Object.assign(prev,...) so every field (examDate, daily, mockHistory, …) is preserved within the level slice
-  const markKnown=(deck,front)=>commit(prev=>{ const d=Object.assign({},(prev.known||{})[deck]||{}); if(d[front])delete d[front]; else d[front]=1; const known=Object.assign({},prev.known); known[deck]=d; return Object.assign({},prev,{known:known}); });
-  const setBest=(mode,score)=>commit(prev=>{ const best=Object.assign({},prev.best); best[mode]=Math.max(best[mode]||0,score); return Object.assign({},prev,{best:best}); });
-  const reviewCard=(deck,front,grade)=>commit(prev=>{
-    const srs=Object.assign({}, prev.srs||{}); const dd=Object.assign({}, srs[deck]||{});
-    const prevCard=dd[front];
-    const ns=srsUpdate(prevCard, grade);
+  const reviewCard = (deck, front, grade) => commit(prev => {
+    const srs = Object.assign({}, prev.srs || {});
+    const dd = Object.assign({}, srs[deck] || {});
+    const prevCard = dd[front];
+    const ns = srsUpdate(prevCard, grade);
     ns.first = (prevCard && prevCard.first) ? prevCard.first : dayStr();
-    dd[front]=ns; srs[deck]=dd;
-    const known=Object.assign({}, prev.known); const kd=Object.assign({}, known[deck]||{});
-    if(grade!=='again' && ns.reps>=2) kd[front]=1; if(grade==='again') delete kd[front];
-    known[deck]=kd;
-    const stats=bumpStats(prev.stats, dayStr());
-    return Object.assign({},prev,{known:known, srs:srs, stats:stats});
-  });
-  const setGoal=(n)=>commit(prev=>{ const stats=Object.assign({streak:0,best:0,lastActive:'',goal:20,todayDate:'',todayCount:0}, prev.stats||{}); stats.goal=Math.max(5,Math.min(200,n)); return Object.assign({},prev,{stats:stats}); });
-  const addMockResult=(score,total)=>commit(prev=>{
-    const pct=Math.round(score/(total||1)*100);
-    const mockHistory=(prev.mockHistory||[]).concat([{t:Date.now(),score:score,total:total,pct:pct}]).slice(-50);
-    const best=Object.assign({},prev.best); best.mock=Math.max(best.mock||0,score);
-    return Object.assign({},prev,{best:best, mockHistory:mockHistory});
-  });
-  const setExamDate=(d)=>commit(prev=>Object.assign({},prev,{examDate:d||''}));
-  const toggleDaily=(key)=>commit(prev=>{
-    const t=dayStr(); const daily=Object.assign({}, prev.daily||{}); const day=Object.assign({}, daily[t]||{});
-    day[key]=!day[key]; daily[t]=day;
-    const keys=Object.keys(daily).sort(); while(keys.length>7){ delete daily[keys.shift()]; }
-    return Object.assign({},prev,{daily:daily});
-  });
-  const recordAttempt=(section,correct)=>commit(prev=>{ if(!section)return prev; const ss=Object.assign({},prev.secStats||{}); ss[section]=(ss[section]||[]).concat([correct?1:0]).slice(-30); return Object.assign({},prev,{secStats:ss}); });
-  const addMistake=(item)=>commit(prev=>{ if(!item||item.prompt==null)return prev; const key=(item.section||'')+'|'+item.prompt+'|'+item.correct; const list=(prev.mistakes||[]).filter(function(m){return ((m.section||'')+'|'+m.prompt+'|'+m.correct)!==key;}); list.push(Object.assign({},item,{t:Date.now()})); return Object.assign({},prev,{mistakes:list.slice(-100)}); });
-  const clearMistake=(key)=>commit(prev=>{ const list=(prev.mistakes||[]).filter(function(m){return ((m.section||'')+'|'+m.prompt+'|'+m.correct)!==key;}); return Object.assign({},prev,{mistakes:list}); });
-  const recordBatch=(attempts, mistakeItems)=>commit(prev=>{
-    const ss=Object.assign({}, prev.secStats||{});
-    (attempts||[]).forEach(function(a){ if(a.section) ss[a.section]=(ss[a.section]||[]).concat([a.ok?1:0]).slice(-30); });
-    let list=(prev.mistakes||[]).slice();
-    (mistakeItems||[]).forEach(function(item){ if(item&&item.prompt!=null){ const key=(item.section||'')+'|'+item.prompt+'|'+item.correct; list=list.filter(function(m){return ((m.section||'')+'|'+m.prompt+'|'+m.correct)!==key;}); list.push(Object.assign({},item,{t:Date.now()})); } });
-    return Object.assign({},prev,{secStats:ss, mistakes:list.slice(-100)});
+    dd[front] = ns;
+    srs[deck] = dd;
+    const known = Object.assign({}, prev.known);
+    const kd = Object.assign({}, known[deck] || {});
+    if (grade !== 'again' && ns.reps >= 2) kd[front] = 1;
+    if (grade === 'again') delete kd[front];
+    known[deck] = kd;
+    const stats = bumpStats(prev.stats, dayStr());
+    return Object.assign({}, prev, { known, srs, stats });
   });
 
-  const prog = (doc.levels&&doc.levels[level]) || {known:{},best:{},srs:{}};
-  const levelDue={}; 
-  try{ (typeof LEVEL_ORDER!=='undefined'?LEVEL_ORDER:[]).forEach(function(id){ levelDue[id]=dueCount(((doc.levels||{})[id]||{}).srs); }); }catch(e){}
+  const setGoal = (n) => commit(prev => {
+    const stats = Object.assign({ streak: 0, best: 0, lastActive: '', goal: 20, todayDate: '', todayCount: 0 }, prev.stats || {});
+    stats.goal = Math.max(5, Math.min(200, n));
+    return Object.assign({}, prev, { stats });
+  });
 
-  return { 
-    prog, 
-    loaded: true, 
-    loading,            // ← NEW: loading state
-    signedIn, 
-    activeLevel: doc.activeLevel, 
-    levelDue, 
-    setLevelPref, 
-    markKnown, 
-    setBest, 
-    reviewCard, 
-    setGoal, 
-    addMockResult, 
-    setExamDate, 
-    toggleDaily, 
-    recordAttempt, 
-    addMistake, 
-    clearMistake, 
-    recordBatch, 
-    syncState 
+  const addMockResult = (score, total) => commit(prev => {
+    const pct = Math.round(score / (total || 1) * 100);
+    const mockHistory = (prev.mockHistory || []).concat([{ t: Date.now(), score, total, pct }]).slice(-50);
+    const best = Object.assign({}, prev.best);
+    best.mock = Math.max(best.mock || 0, score);
+    return Object.assign({}, prev, { best, mockHistory });
+  });
+
+  const setExamDate = (d) => commit(prev => Object.assign({}, prev, { examDate: d || '' }));
+
+  const toggleDaily = (key) => commit(prev => {
+    const t = dayStr();
+    const daily = Object.assign({}, prev.daily || {});
+    const day = Object.assign({}, daily[t] || {});
+    day[key] = !day[key];
+    daily[t] = day;
+    const keys = Object.keys(daily).sort();
+    while (keys.length > 7) { delete daily[keys.shift()]; }
+    return Object.assign({}, prev, { daily });
+  });
+
+  const recordAttempt = (section, correct) => commit(prev => {
+    if (!section) return prev;
+    const ss = Object.assign({}, prev.secStats || {});
+    ss[section] = (ss[section] || []).concat([correct ? 1 : 0]).slice(-30);
+    return Object.assign({}, prev, { secStats: ss });
+  });
+
+  const addMistake = (item) => commit(prev => {
+    if (!item || item.prompt == null) return prev;
+    const key = (item.section || '') + '|' + item.prompt + '|' + item.correct;
+    const list = (prev.mistakes || []).filter(m => ((m.section || '') + '|' + m.prompt + '|' + m.correct) !== key);
+    list.push(Object.assign({}, item, { t: Date.now() }));
+    return Object.assign({}, prev, { mistakes: list.slice(-100) });
+  });
+
+  const clearMistake = (key) => commit(prev => {
+    const list = (prev.mistakes || []).filter(m => ((m.section || '') + '|' + m.prompt + '|' + m.correct) !== key);
+    return Object.assign({}, prev, { mistakes: list });
+  });
+
+  const recordBatch = (attempts, mistakeItems) => commit(prev => {
+    const ss = Object.assign({}, prev.secStats || {});
+    (attempts || []).forEach(a => {
+      if (a.section) ss[a.section] = (ss[a.section] || []).concat([a.ok ? 1 : 0]).slice(-30);
+    });
+    let list = (prev.mistakes || []).slice();
+    (mistakeItems || []).forEach(item => {
+      if (item && item.prompt != null) {
+        const key = (item.section || '') + '|' + item.prompt + '|' + item.correct;
+        list = list.filter(m => ((m.section || '') + '|' + m.prompt + '|' + m.correct) !== key);
+        list.push(Object.assign({}, item, { t: Date.now() }));
+      }
+    });
+    return Object.assign({}, prev, { secStats: ss, mistakes: list.slice(-100) });
+  });
+
+  // ---- Derived data ----
+  const prog = (doc.levels && doc.levels[level]) || { known: {}, best: {}, srs: {} };
+  const levelDue = {};
+  try {
+    (typeof LEVEL_ORDER !== 'undefined' ? LEVEL_ORDER : []).forEach(id => {
+      levelDue[id] = dueCount(((doc.levels || {})[id] || {}).srs);
+    });
+  } catch (e) {}
+
+  // ---- Return ----
+  return {
+    prog,
+    signedIn,
+    activeLevel: doc.activeLevel,
+    levelDue,
+    setLevelPref,
+    markKnown,
+    setBest,
+    reviewCard,
+    setGoal,
+    addMockResult,
+    setExamDate,
+    toggleDaily,
+    recordAttempt,
+    addMistake,
+    clearMistake,
+    recordBatch,
+    connectionStatus,
   };
 }
 /* ---------- voice (Web Speech API) ---------- */
@@ -354,119 +522,139 @@ function exWord(ex){ return (ex||'').split(' (')[0]; }
 const NAVICON = {home:'家',kana:'あ',kanji:'漢',vocab:'語',grammar:'文',practice:'練'};
 const NAVSHORT = {home:'Home',kana:'Kana',kanji:'Kanji',vocab:'Words',grammar:'Grammar',practice:'Practice'};
 const LEVEL_MARK = {'5':'五','4':'四','3':'三','2':'二','1':'一'};
-
-function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel,theme,setTheme}){
-  const [menu,setMenu] = useState(false);
+function Nav({ view, navigate, user, onSignIn, onSignOut, connectionStatus, level, setLevel, theme, setTheme }) {
+  const [menu, setMenu] = useState(false);
   const signedIn = !!(user && user.uid);
-  const syncTxt = signedIn ? (syncState==='saving' ? '☁ Saving…' : '☁ Synced across devices') : '✓ Saved on this device';
-  const mark = LEVEL_MARK[(LEVEL_META.label||'').slice(-1)] || '語';
-  const avatar = signedIn ? (user.name||'U').charAt(0).toUpperCase() : '☺';
+  const mark = LEVEL_MARK[(LEVEL_META.label || '').slice(-1)] || '語';
+  const avatar = signedIn ? (user.name || 'U').charAt(0).toUpperCase() : '☺';
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRefLevel = useRef(null);
   const profileDropDownRef = useRef(null);
 
+  // ---- Connection status for UI ----
+  const statusClass = signedIn
+    ? (connectionStatus === 'syncing' ? 'syncing'
+        : connectionStatus === 'synced' ? 'online'
+        : 'offline')
+    : '';
 
-    useEffect(() => {
-  function handleClickOutside(event) {
-    // Close JLPT dropdown
-    if (isOpen && dropdownRefLevel.current && !dropdownRefLevel.current.contains(event.target)) {
-      setIsOpen(false);
+  const statusText = signedIn
+    ? (connectionStatus === 'syncing' ? 'Syncing…'
+        : connectionStatus === 'synced' ? 'Synced'
+        : 'Offline')
+    : 'Saved locally';
+
+  // ---- Click outside to close dropdowns ----
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (isOpen && dropdownRefLevel.current && !dropdownRefLevel.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+      if (menu && profileDropDownRef.current && !profileDropDownRef.current.contains(event.target)) {
+        setMenu(false);
+      }
     }
-    // Close Profile dropdown (FIXED)
-    if (menu && profileDropDownRef.current && !profileDropDownRef.current.contains(event.target)) {
-      setMenu(false);
-    }
-  }
-
-  document.addEventListener("mousedown", handleClickOutside);
-  return () => document.removeEventListener("mousedown", handleClickOutside);
-}, [isOpen, menu]); // Added 'menu' to dependencies
-
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen, menu]);
 
   return (
     <nav className="nav">
       <div className="wrap nav-inner">
-        <div className="brand" onClick={()=>navigate('home')} style={{cursor:'pointer'}}>
+        <div className="brand" onClick={() => navigate('home')} style={{ cursor: 'pointer' }}>
           <span className="mark">{mark}</span>
           <span>日本語<small>JLPT {LEVEL_META.label}</small></span>
         </div>
-       
-        <div className="tabs">
-          {TABS.map(([id,label])=>(<span key={id} className={cx('tab',view===id&&'on')} aria-current={view===id?'page':undefined} onClick={()=>navigate(id)}>{label}</span>))}
-        </div>
-  
-<div className="levelsw" ref={dropdownRefLevel} role="combobox" aria-label="JLPT level">
-  
-  {/* The Trigger Button */}
-  <button 
-    className={cx('lvbtn', level && 'on')} 
-    onClick={() => setIsOpen(!isOpen)}
-    aria-expanded={isOpen}
-  >
-    {LEVELS[level].label}
-    {/* Small dropdown arrow icon */}
-    <svg className="dropdown-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="6 9 12 15 18 9"></polyline>
-    </svg>
-  </button>
 
-  {/* The Dropdown Menu */}
-  {isOpen && (
-    <div className="lvdropdown-menu">
-      {LEVEL_ORDER.map(function(id) { 
-        return (
-          <button 
-            key={id} 
-            className={cx('lvbtn', 'lvdropdown-item', level === id && 'on')} 
-            aria-pressed={level === id}
-            onClick={() => {
-              setLevel(id);
-              setIsOpen(false); // Close the menu after selecting
-            }}
+        <div className="tabs">
+          {TABS.map(([id, label]) => (
+            <span key={id} className={cx('tab', view === id && 'on')} onClick={() => navigate(id)}>
+              {label}
+            </span>
+          ))}
+        </div>
+
+        <div className="levelsw" ref={dropdownRefLevel} role="combobox" aria-label="JLPT level">
+          <button
+            className={cx('lvbtn', level && 'on')}
+            onClick={() => setIsOpen(!isOpen)}
+            aria-expanded={isOpen}
           >
-            {LEVELS[id].label}
+            {LEVELS[level].label}
+            <svg className="dropdown-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
           </button>
-        ); 
-      })}
-    </div>
-  )}
-</div>
+          {isOpen && (
+            <div className="lvdropdown-menu">
+              {LEVEL_ORDER.map(id => (
+                <button
+                  key={id}
+                  className={cx('lvbtn', 'lvdropdown-item', level === id && 'on')}
+                  onClick={() => { setLevel(id); setIsOpen(false); }}
+                >
+                  {LEVELS[id].label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="prof">
-          <button className={cx('prof-btn',!signedIn&&'guest')} onClick={()=>setMenu(m=>!m)} aria-label="Account menu">
-            <span className={cx('ava',signedIn&&'on')}>{avatar}</span>
-            <span className="prof-name">{signedIn?user.name:'Guest'}</span>
+          <button
+            className={cx('prof-btn', !signedIn && 'guest')}
+            onClick={() => setMenu(m => !m)}
+            aria-label="Account menu"
+          >
+            <span className={cx('ava', signedIn && 'on', statusClass)}>
+              {avatar}
+            </span>
+            <span className="prof-name">{signedIn ? user.name : 'Guest'}</span>
           </button>
+
           {menu && (
-            <React.Fragment>
-              <div className="menu-back" onClick={()=>setMenu(false)}/>
+            <>
+              <div className="menu-back" onClick={() => setMenu(false)} />
               <div className="prof-menu" ref={profileDropDownRef}>
                 {signedIn ? (
-                  <React.Fragment>
-                    <div className="who">{user.email}<br/><span className="synctag on">{syncTxt}</span></div>
-                    
-                    {/* 🔥 Insert Theme Toggle here */}
-                    <button className="mi" onClick={() => { setTheme(t => t === 'dark' ? 'light' : 'dark'); setMenu(false); }}>
-                      {theme === 'dark' ? '☀️' : '🌙'}{theme === 'dark' ? 'Light' : 'Dark'} mode
-                    </button>
-
-                    <div className="sep"/>
-                    <button className="mi" onClick={()=>{setMenu(false);navigate('practice');}}>Continue practicing</button>
-                    <button className="mi danger" onClick={()=>{setMenu(false);onSignOut();}}>Sign out</button>
-                  </React.Fragment>
-                ) : (
-                  <React.Fragment>
-                    <div className="who">Studying as a guest<br/><span className="synctag">Progress saved on this device</span></div>
-                      {/* 🔥 Insert Theme Toggle here */}
+                  <>
+                    <div className="who">
+                      {user.email}<br />
+                      <span className={cx('synctag', statusClass === 'online' ? 'on' : 'off')}>
+                        {statusText}
+                      </span>
+                    </div>
                     <button className="mi" onClick={() => { setTheme(t => t === 'dark' ? 'light' : 'dark'); setMenu(false); }}>
                       {theme === 'dark' ? '☀️' : '🌙'} {theme === 'dark' ? 'Light' : 'Dark'} mode
                     </button>
-                    <div className="sep"/>
-                    <div style={{padding:'4px 6px 8px'}}><GoogleBtn onSignIn={onSignIn} label="Sign in to sync" full/></div>
-                    <div className="muted" style={{fontSize:'11.5px',padding:'0 8px 6px',lineHeight:1.5}}>Sign in to save your progress and use it on your phone and computer.</div>
-                  </React.Fragment>
+                    <div className="sep" />
+                    <button className="mi" onClick={() => { setMenu(false); navigate('practice'); }}>
+                      Continue practicing
+                    </button>
+                    <button className="mi danger" onClick={() => { setMenu(false); onSignOut(); }}>
+                      Sign out
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="who">
+                      Studying as a guest<br />
+                      <span className="synctag">Progress saved on this device</span>
+                    </div>
+                    <button className="mi" onClick={() => { setTheme(t => t === 'dark' ? 'light' : 'dark'); setMenu(false); }}>
+                      {theme === 'dark' ? '☀️' : '🌙'} {theme === 'dark' ? 'Light' : 'Dark'} mode
+                    </button>
+                    <div className="sep" />
+                    <div style={{ padding: '4px 6px 8px' }}>
+                      <GoogleBtn onSignIn={onSignIn} label="Sign in to sync" full />
+                    </div>
+                    <div className="muted" style={{ fontSize: '11.5px', padding: '0 8px 6px', lineHeight: 1.5 }}>
+                      Sign in to save your progress and use it on your phone and computer.
+                    </div>
+                  </>
                 )}
               </div>
-            </React.Fragment>
+            </>
           )}
         </div>
       </div>
@@ -2154,14 +2342,14 @@ const setLevel = (lv) => {
 
   
   // ---- If data is still loading, show splash ----
-  if (cp.loading) {
-    return <Splash />;
-  }
+  // if (cp.loading) {
+  //   return <Splash />;
+  // }
 
 
   return (
     <div className="app">
-      <Nav view={v} navigate={navigate} user={user} onSignIn={onSignIn} onSignOut={onSignOut} syncState={cp.syncState} level={level} setLevel={setLevel} theme={theme} setTheme={setTheme}/>
+      <Nav view={v} navigate={navigate} user={user} onSignIn={onSignIn} onSignOut={onSignOut} connectionStatus={cp.connectionStatus} level={level} setLevel={setLevel} theme={theme} setTheme={setTheme} />
       <main className="main" key={level}>
         {v==='home' && <Home setView={navigate} name={name} prog={cp.prog} setGoal={cp.setGoal} toggleDaily={cp.toggleDaily} setExamDate={cp.setExamDate} setLevel={setLevel} levelDue={cp.levelDue} user={user} onSignIn={onSignIn}/>}
         {v==='kana' && <KanaView nav={navigate}/>}
@@ -2198,9 +2386,12 @@ class ErrorBoundary extends React.Component{
   }
 }
 
-function RootApp(){
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+function RootApp() {
+  // Immediately load user profile from localStorage (no waiting for Firebase)
+  const [user, setUser] = useState(() => {
+    const profile = lsGet('user_profile');
+    return profile || null;
+  });
 
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('app_theme');
@@ -2213,49 +2404,80 @@ function RootApp(){
     localStorage.setItem('app_theme', theme);
   }, [theme]);
 
-  useEffect(()=>{
+  // Firebase auth listener – updates user with real info when available
+  useEffect(() => {
     let alive = true;
     let unsub = null;
 
     cloud.init();
-    
-    // If Firebase isn't configured, just stop loading and stay guest
-    if(!cloud.ok){
-      if(alive) setAuthLoading(false);
-      return;
-    }
 
-    unsub = cloud.onAuth(function(fu){ 
-      if(alive) {
-        setUser(fu ? {uid:fu.uid, email:fu.email||'', name:(fu.displayName||fu.email||'You').split('@')[0]} : null);
-        setAuthLoading(false); // ✅ Only called when we actually know the auth state
+    if (!cloud.ok) return;
+
+    unsub = cloud.onAuth(function(fu) {
+      if (!alive) return;
+      if (fu) {
+        const profile = {
+          uid: fu.uid,
+          email: fu.email || '',
+          name: fu.displayName || fu.email || 'You',
+        };
+        // Store profile locally so it persists across reloads
+        lsSet('user_profile', profile);
+        setUser(profile);
+      } else {
+        // User signed out (from another device) – clear local profile
+        lsDel('user_profile');
+        setUser(null);
       }
     });
 
-    return ()=>{
+    return () => {
       alive = false;
-      if(unsub) try{ unsub(); }catch(e){}
+      if (unsub) try { unsub(); } catch (e) {}
     };
   }, []);
 
-  const signIn = ()=>{ 
-    try{ 
-      if(!cloud.ok) cloud.init(); 
-      if(cloud.ok) return cloud.signInGoogle(); 
-    }catch(e){ return Promise.reject(e); } 
-    return Promise.reject(new Error('Sign-in unavailable')); 
+  const signIn = () => {
+    try {
+      if (!cloud.ok) cloud.init();
+      if (cloud.ok) {
+        return cloud.signInGoogle().then(result => {
+          const fu = result.user;
+          const profile = {
+            uid: fu.uid,
+            email: fu.email || '',
+            name: fu.displayName || fu.email || 'You',
+          };
+          lsSet('user_profile', profile);
+          setUser(profile);
+        });
+      }
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return Promise.reject(new Error('Sign-in unavailable'));
   };
 
-  const signOut = ()=>{ 
-    try{ cloud.signOut(); }catch(e){} 
-    setUser(null); 
+  const signOut = () => {
+    try { cloud.signOut(); } catch (e) {}
+    if (user && user.uid) {
+      lsDel(userKey(user.uid));   // clear progress data
+    }
+    lsDel('user_profile');        // clear profile
+    setUser(null);
   };
 
-  if (authLoading) {
-    return <Splash />;
-  }
-
-  return <App key={user ? user.uid : 'guest'} user={user} onSignIn={signIn} onSignOut={signOut} theme={theme} setTheme={setTheme}/>;
+  // Render app immediately – no splash screen
+  return (
+    <App
+      key={user ? user.uid : 'guest'}
+      user={user}
+      onSignIn={signIn}
+      onSignOut={signOut}
+      theme={theme}
+      setTheme={setTheme}
+    />
+  );
 }
 function Root(){ return <ErrorBoundary><RootApp/></ErrorBoundary>; }
 
