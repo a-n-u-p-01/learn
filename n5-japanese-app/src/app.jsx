@@ -276,12 +276,12 @@ useEffect(() => {
   if (!signedIn) return;
 
   saveTimer.current = setInterval(async () => {
- 
+    if (syncingRef.current) return;
+    if (!dirtyRef.current) return;
 
-    if (syncingRef.current) {
-      return;
-    }
-    if (!dirtyRef.current) {
+    // 🔥 Skip if offline – keep dirty true so it retries later
+    if (!navigator.onLine) {
+      setConnectionStatus('offline');
       return;
     }
 
@@ -294,11 +294,9 @@ useEffect(() => {
         return;
       }
       const remote = await cloud.load(uid);
-     
 
       const remoteVersion = remote?.version || 0;
       const localVersion = localVersionRef.current || 0;
-
 
       let docToSave = snapshot;
       let newVersion = localVersion + 1;
@@ -324,12 +322,10 @@ useEffect(() => {
       } else {
         dirtyRef.current = false;
       }
-
     } catch (err) {
       console.error('[SaveWorker] Save error:', err);
       setConnectionStatus('offline');
     } finally {
-      // ⚠️ ALWAYS release the lock
       syncingRef.current = false;
     }
   }, 5000);
@@ -340,6 +336,8 @@ useEffect(() => {
   // ---- SyncWorker (every 30 sec) ----
 const checkRemote = useCallback(async () => {
   if (syncingRef.current) return;
+  // 🔥 Skip if offline
+  if (!navigator.onLine) return;
 
   try {
     const remote = await cloud.load(uid);
@@ -418,53 +416,59 @@ const checkRemote = useCallback(async () => {
   }, [checkRemote]);
 
   // ---- Effect: handle user changes (sign‑in / sign‑out) ----
-  useEffect(() => {
-    if (!signedIn) {
-      if (uid) lsDel(userKey(uid));
-      const guestDoc = migrateDoc(lsGet(GUEST_KEY) || { levels: {}, activeLevel: 'n5' });
-      setDoc(guestDoc);
-      setConnectionStatus('local');
-      localVersionRef.current = 0;
-      remoteVersionRef.current = 0;
-      dirtyRef.current = false;
-      return;
-    }
+ useEffect(() => {
+  if (!signedIn) {
+    if (uid) lsDel(userKey(uid));
+    const guestDoc = migrateDoc(lsGet(GUEST_KEY) || { levels: {}, activeLevel: 'n5' });
+    setDoc(guestDoc);
+    setConnectionStatus('local');
+    localVersionRef.current = 0;
+    remoteVersionRef.current = 0;
+    dirtyRef.current = false;
+    return;
+  }
 
-    const localDoc = migrateDoc(lsGet(userKey(uid)) || { levels: {}, activeLevel: 'n5' });
-    setDoc(localDoc);
-    setConnectionStatus('syncing');
+  const localDoc = migrateDoc(lsGet(userKey(uid)) || { levels: {}, activeLevel: 'n5' });
+  setDoc(localDoc);
+  setConnectionStatus('syncing');
 
-    if (!cloud.ok) {
+  if (!cloud.ok) {
+    setConnectionStatus('offline');
+    return;
+  }
+
+  // 🔥 If offline, don't try to load from Firebase
+  if (!navigator.onLine) {
+    setConnectionStatus('offline');
+    return;
+  }
+
+  let alive = true;
+  const guest = lsGet(GUEST_KEY);
+
+  cloud.load(uid)
+    .then(remote => {
+      if (!alive) return;
+      let merged = localDoc;
+      if (remote) {
+        merged = mergeDoc(merged, migrateDoc(remote.data));
+        localVersionRef.current = remote.version || 0;
+        remoteVersionRef.current = remote.version || 0;
+      }
+      if (guest) merged = mergeDoc(merged, migrateDoc(guest));
+      lsSet(userKey(uid), merged);
+      setDoc(merged);
+      if (guest) lsDel(GUEST_KEY);
+      dirtyRef.current = true; // trigger SaveWorker to upload merged data
+      setConnectionStatus('synced');
+    })
+    .catch(() => {
+      if (!alive) return;
       setConnectionStatus('offline');
-      return;
-    }
+    });
 
-    let alive = true;
-    const guest = lsGet(GUEST_KEY);
-
-    cloud.load(uid)
-      .then(remote => {
-        if (!alive) return;
-        let merged = localDoc;
-         if (remote) {
-      merged = mergeDoc(merged, migrateDoc(remote.data));
-      localVersionRef.current = remote.version || 0;
-      remoteVersionRef.current = remote.version || 0;
-    }
-        if (guest) merged = mergeDoc(merged, migrateDoc(guest));
-        lsSet(userKey(uid), merged);
-        setDoc(merged);
-        if (guest) lsDel(GUEST_KEY);
-        dirtyRef.current = true; // trigger SaveWorker to upload merged data
-        setConnectionStatus('synced');
-      })
-      .catch(() => {
-        if (!alive) return;
-        setConnectionStatus('offline');
-      });
-
-    return () => { alive = false; };
-  }, [uid, signedIn]);
+  return () => { alive = false; };
+}, [uid, signedIn]);
 
   // ---- Level preference ----
   const setLevelPref = (lv) => {
@@ -572,13 +576,19 @@ const checkRemote = useCallback(async () => {
   });
 
   // ---- Derived data ----
-  const prog = (doc.levels && doc.levels[level]) || { known: {}, best: {}, srs: {} };
-  const levelDue = {};
+ const prog = useMemo(() => {
+  return (doc.levels && doc.levels[level]) || { known: {}, best: {}, srs: {} };
+}, [doc, level]);
+
+const levelDue = useMemo(() => {
+  const result = {};
   try {
     (typeof LEVEL_ORDER !== 'undefined' ? LEVEL_ORDER : []).forEach(id => {
-      levelDue[id] = dueCount(((doc.levels || {})[id] || {}).srs);
+      result[id] = dueCount(((doc.levels || {})[id] || {}).srs);
     });
   } catch (e) {}
+  return result;
+}, [doc]);
 
   // ---- Return ----
   return {
@@ -609,22 +619,100 @@ try{ speechSupported = typeof window!=='undefined' && !!window.speechSynthesis; 
 if(speechSupported){ _loadVoices(); try{ window.speechSynthesis.onvoiceschanged=_loadVoices; }catch(e){} }
 let _warmed=false;
 function warmSpeech(){ if(_warmed||!speechSupported)return; _warmed=true; try{ const u=new SpeechSynthesisUtterance(' '); u.volume=0; window.speechSynthesis.speak(u); }catch(e){} }
-function speak(text, h){
-  if(!speechSupported||!text) return;
-  try{
-    const synth=window.speechSynthesis;
-    if(synth.speaking||synth.pending) synth.cancel();   // only cancel when needed (less lag)
-    const u=new SpeechSynthesisUtterance(text);
-    u.lang='ja-JP'; if(JA_VOICE)u.voice=JA_VOICE; u.rate=0.85;
-    if(h&&h.boundary){ try{ u.onboundary=h.boundary; }catch(e){} }
-    if(h&&h.end){ try{ u.onend=h.end; u.onerror=h.end; }catch(e){} }
-    try{ synth.resume(); }catch(e){}   // Chrome sometimes auto-pauses the engine
+function speak(text, h) {
+  if (!speechSupported) {
+    return;
+  }
+  if (!text) {
+    return;
+  }
+
+  try {
+    const synth = window.speechSynthesis;
+    const isOnline = navigator.onLine;
+
+    if (synth.speaking || synth.pending) synth.cancel();
+
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ja-JP';
+    u.rate = 0.85;
+
+    if (isOnline && JA_VOICE) {
+      u.voice = JA_VOICE;
+    } 
+
+    if (h && h.boundary) u.onboundary = h.boundary;
+    if (h && h.end) { u.onend = h.end; u.onerror = h.end; }
+
+    try { synth.resume(); } catch (e) {}
     synth.speak(u);
-  }catch(e){}
+  } catch (e) {
+    console.error('[speak] Error:', e);
+  }
 }
-function SpeakBtn({text,label,lg}){
-  if(!speechSupported) return null;
-  return <button className={cx('spk',lg&&'lg')} aria-label={'Play pronunciation'+(label?' for '+label:'')} onClick={(e)=>{e.stopPropagation();speak(text);}}>🔊</button>;
+function SpeakBtn({ text, label, lg }) {
+  const [hasOfflineVoice, setHasOfflineVoice] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const updateVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const jaVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('ja'));
+
+      const hasLocalJapanese = jaVoices.some(v =>
+        !v.name.toLowerCase().includes('google')
+      );
+      setHasOfflineVoice(hasLocalJapanese);
+    };
+
+    updateVoices();
+    window.speechSynthesis.onvoiceschanged = updateVoices;
+
+    const handleOnline = () => {
+      setIsOnline(true);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  if (!speechSupported) {
+    return null;
+  }
+
+  const isDisabled = !isOnline && !hasOfflineVoice;
+
+  const title = isDisabled
+    ? 'Voice unavailable offline'
+    : `Play pronunciation${label ? ' for ' + label : ''}`;
+
+  return (
+    <button
+      className={cx('spk', lg && 'lg', isDisabled && 'spk-disabled')}
+      aria-label={title}
+      title={title}
+      disabled={isDisabled}
+      style={{
+        opacity: isDisabled ? 0.4 : 1,
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        pointerEvents: isDisabled ? 'none' : 'auto',
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!isDisabled) speak(text);
+      }}
+    >
+      🔊
+    </button>
+  );
 }
 
 /* ---------- active level (content is swapped in by setActiveLevel; same engine for every level) ---------- */
@@ -849,30 +937,63 @@ function MasteryPanel({pct, known, total, areas}){
     </section>
   );
 }
-function WeakAreas({prog, setView}){
-  const ss = prog.secStats||{};
-  const rows = Object.keys(ss).filter(function(k){ return (ss[k]||[]).length>0; })
-    .map(function(k){ const arr=ss[k]; const pct=Math.round(arr.reduce(function(a,b){return a+b;},0)/arr.length*100); return [k,pct,arr.length]; })
-    .sort(function(a,b){ return a[1]-b[1]; });
-  if(!rows.length) return null;
-  const weak=rows[0];
-  const GO={Kana:['kana',''],Vocabulary:['practice','quiz'],Kanji:['practice','quiz'],Grammar:['practice','quiz'],Listening:['practice','quiz'],Reading:['practice','reading']};
+function WeakAreas({ prog, setView }) {
+  const ss = prog.secStats || {};
+  const rows = Object.keys(ss)
+    .filter(function (k) { return (ss[k] || []).length > 0; })
+    .map(function (k) {
+      const arr = ss[k];
+      const pct = Math.round(arr.reduce(function (a, b) { return a + b; }, 0) / arr.length * 100);
+      return [k, pct, arr.length];
+    })
+    .sort(function (a, b) { return a[1] - b[1]; });
+
+  if (!rows.length) return null;
+  const weak = rows[0];
+
+  // Map section name to [view, sub, sub2]
+  const GO = {
+    Kana: ['practice', 'quiz', 'kana'],
+    Vocabulary: ['practice', 'quiz', 'vocab'],
+    Kanji: ['practice', 'quiz', 'kanji'],
+    Grammar: ['practice', 'quiz', 'grammar'],
+    Listening: ['practice', 'quiz', 'listen'],
+    Reading: ['practice', 'reading', ''],
+  };
+
+  const target = GO[weak[0]] || ['practice', 'quiz', ''];
+
   return (
-    <section className="block wrap" style={{paddingTop:0}}>
+    <section className="block wrap" style={{ paddingTop: 0 }}>
       <div className="mastery">
         <div className="mhead"><div><div className="ey">Recent accuracy</div><h2>Weak areas</h2></div></div>
         <div className="msub">From your most recent answers per section — live exam-readiness, not a lifetime average.</div>
         <div className="mareas">
-          {rows.map(function(r){ return (
-            <div className="marea" key={r[0]}>
-              <div className="lab"><span>{r[0]}</span><span>{r[1]}% · {r[2]} ans</span></div>
-              <div className="pbar"><i style={{width:Math.max(r[1],2)+'%', background:r[1]<60?'linear-gradient(90deg,#e0463b,#ff5d52)':undefined}}/></div>
-            </div>
-          ); })}
+          {rows.map(function (r) {
+            return (
+              <div className="marea" key={r[0]}>
+                <div className="lab"><span>{r[0]}</span><span>{r[1]}% · {r[2]} ans</span></div>
+                <div className="pbar">
+                  <i style={{
+                    width: Math.max(r[1], 2) + '%',
+                    background: r[1] < 60 ? 'linear-gradient(90deg,#e0463b,#ff5d52)' : undefined
+                  }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="examrow" style={{marginTop:14}}>
+        <div className="examrow" style={{ marginTop: 14 }}>
           <span>📌 Study next: <b>{weak[0]}</b> ({weak[1]}%)</span>
-          <button className="btn primary sm" onClick={function(){ var g=GO[weak[0]]||['practice','quiz']; setView(g[0],g[1]); }}>Practice {weak[0]} →</button>
+          <button
+            className="btn primary sm"
+            onClick={function () {
+              // target[0] = view, target[1] = sub, target[2] = sub2 (quiz mode)
+              setView(target[0], target[1], target[2]);
+            }}
+          >
+            Practice {weak[0]} →
+          </button>
         </div>
       </div>
     </section>
@@ -1027,7 +1148,7 @@ function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
     </div>
   );
 }
-function Home({setView,name,prog,setGoal,toggleDaily,setExamDate,setLevel,levelDue,user,onSignIn}){
+const Home =React.memo(function Home({setView,name,prog,setGoal,toggleDaily,setExamDate,setLevel,levelDue,user,onSignIn}){
   const L = LEVEL_META;
   const known = prog.known||{};
   const knownCount = Object.keys(known).reduce((a,k)=>a+Object.keys(known[k]||{}).length,0);
@@ -1097,10 +1218,10 @@ function Home({setView,name,prog,setGoal,toggleDaily,setExamDate,setLevel,levelD
       <NextLevel pct={pct} setLevel={setLevel}/>
     </div>
   );
-}
+})
 
 /* ---------- kana ---------- */
-function KanaGrid({list}){
+const KanaGrid = React.memo(function KanaGrid({list}){
   return (
     <div className="kana-grid">
       {list.map((x,i)=>(
@@ -1111,8 +1232,9 @@ function KanaGrid({list}){
       ))}
     </div>
   );
-}
-function KanaView({nav}){
+})
+
+const KanaView = React.memo(function KanaView({nav}){
   const [sys,setSys] = useState('hiragana');
   const set = KANA[sys];
   return (
@@ -1130,9 +1252,9 @@ function KanaView({nav}){
       <div className="kana-sub">Yōon — combination sounds</div><KanaGrid list={set.yoon}/>
     </section>
   );
-}
+})
 
-export default function KanjiView({ nav }) {
+const KanjiView = React.memo( function KanjiView({ nav }) {
   const [q, setQ] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -1290,7 +1412,7 @@ export default function KanjiView({ nav }) {
                   rel="noopener noreferrer"
                   className="kj-stroke-link"
                 >
-                  ✍️ See stroke order on Jisho ↗
+                  ✍️
                 </a>
               </div>
 
@@ -1397,11 +1519,11 @@ export default function KanjiView({ nav }) {
       )}
     </section>
   );
-}
+})
 function displayReading(reading){
   return reading.replace(/[()]/g,'');
 }
-function VocabView({ nav }) {
+const VocabView = React.memo(function VocabView({ nav }) {
   const cats = useMemo(() => ['All', ...Array.from(new Set(VOCAB.map(v => v.cat)))], []);
   const [cat, setCat] = useState('All');
   const [expandedRows, setExpandedRows] = useState({});
@@ -1648,10 +1770,10 @@ function VocabView({ nav }) {
       )}
     </section>
   );
-}
+})
 
 /* ---------- grammar ---------- */
-function GrammarView({nav}) {
+const GrammarView = React.memo(function GrammarView({nav}) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const containerRef = useRef(null);
@@ -1790,9 +1912,9 @@ function GrammarView({nav}) {
       </div>
     </section>
   );
-}
+})
 /* ---------- numbers, time & counters ---------- */
-function NumGrid({items}){
+const NumGrid = React.memo(function NumGrid({items}){
   return (
     <div className="kana-grid numgrid">
       {items.map(function(x,i){ return (
@@ -1803,8 +1925,8 @@ function NumGrid({items}){
       ); })}
     </div>
   );
-}
-function NumbersView(){
+})
+const NumbersView = React.memo(function NumbersView(){
   return (
     <section className="block wrap">
       <div className="shead"><div><div className="ey">Numbers · 数字</div><h2>Numbers, Time &amp; Counters</h2><p>Telling time, counting things, and the tricky sound-changes N5 loves to test. Tap any item to hear it.</p></div></div>
@@ -1827,7 +1949,7 @@ function NumbersView(){
       <p className="muted center" style={{marginTop:24,fontSize:'13px'}}>午前 (ごぜん) = a.m. · 午後 (ごご) = p.m. · e.g. 午後三時半 = 3:30 p.m.</p>
     </section>
   );
-}
+})
 
 /* ---------- flashcards ---------- */
 function buildDeck(id){
@@ -2367,7 +2489,7 @@ function MistakeReview({cp}){
 }
 
 /* ---------- practice ---------- */
-function Practice({cp, tool, setTool, quizMode}){
+const Practice = React.memo(function Practice({cp, tool, setTool, quizMode}){
   const t = tool||'review';
   const mistakeCount = (cp.prog.mistakes||[]).length;
   const blurb = t==='mistakes' ? 'Re-drill exactly what you got wrong in quizzes, reading and mock tests — until you get it right.'
@@ -2390,7 +2512,7 @@ function Practice({cp, tool, setTool, quizMode}){
       {t==='quiz'?<Quiz key={'q-'+(quizMode||'')} cp={cp} initialMode={quizMode}/>:t==='cards'?<Flashcards cp={cp}/>:t==='reading'?<Reading cp={cp}/>:t==='mock'?<Mock cp={cp}/>:t==='mistakes'?<MistakeReview cp={cp}/>:<Review cp={cp}/>}
     </section>
   );
-}
+})
 
 /* ---------- sign-in (optional Google sync) ---------- */
 function GoogleBtn({onSignIn, label, full}){
