@@ -446,25 +446,8 @@ function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel,the
                     
                     {/* 🔥 Insert Theme Toggle here */}
                     <button className="mi" onClick={() => { setTheme(t => t === 'dark' ? 'light' : 'dark'); setMenu(false); }}>
-                      {theme === 'dark' ? '☀️' : '🌙'} {theme === 'dark' ? 'Light' : 'Dark'} mode
+                      {theme === 'dark' ? '☀️' : '🌙'}{theme === 'dark' ? 'Light' : 'Dark'} mode
                     </button>
-                    {/* 🔥 Custom Install Button (Only shows if the browser supports it) */}
-{deferredPrompt && (
-  <button 
-    className="mi" 
-    onClick={() => {
-      setMenu(false);
-      deferredPrompt.prompt(); // Forces the native popup to appear
-      deferredPrompt.userChoice.then((choiceResult) => {
-        if (choiceResult.outcome === 'accepted') {
-          setDeferredPrompt(null); // Remove the button after install
-        }
-      });
-    }}
-  >
-    📲 Install App
-  </button>
-)}
 
                     <div className="sep"/>
                     <button className="mi" onClick={()=>{setMenu(false);navigate('practice');}}>Continue practicing</button>
@@ -493,18 +476,6 @@ function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel,the
 
 
 function BottomNav({view,navigate}){
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  // Inside your Nav component
-
-useEffect(() => {
-  const handleInstall = (e) => {
-    e.preventDefault(); // Prevent the browser from showing its own infobar
-    setDeferredPrompt(e); // Store the event so we can trigger it manually
-  };
-  console.log("install event: ",  deferredPrompt);
-  window.addEventListener('beforeinstallprompt', handleInstall);
-  return () => window.removeEventListener('beforeinstallprompt', handleInstall);
-}, []);
   return (
     <nav className="botnav" aria-label="Sections">
       {TABS.map(([id])=>(
