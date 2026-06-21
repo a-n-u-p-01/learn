@@ -6,6 +6,30 @@
 <title>Learn Japanese from N5 to N1 for free</title>
 <meta name="description" content="A minimal, dark study app for the JLPT from N5 to N1: kana, kanji, vocabulary, grammar, flashcards and quizzes." />
 
+<!-- 🔥 ZERO-FLASH THEME SCRIPT (Sets color instantly before CSS loads) -->
+<script>
+  (function() {
+    try {
+      const saved = localStorage.getItem('app_theme');
+      const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+      const isLight = saved === 'light' || (!saved && prefersLight);
+      
+      const root = document.documentElement;
+      const metaTheme = document.querySelector('meta[name="theme-color"]');
+
+      if (isLight) {
+        root.setAttribute('data-theme', 'light');
+        root.style.backgroundColor = '#f5f7fa'; // 🔥 Forces inline background instantly
+        if(metaTheme) metaTheme.content = '#f5f7fa';
+      } else {
+        root.setAttribute('data-theme', 'dark');
+        root.style.backgroundColor = '#0b0c0f'; // 🔥 Forces inline background instantly
+        if(metaTheme) metaTheme.content = '#0b0c0f';
+      }
+    } catch (e) {}
+  })();
+</script>
+
 <!-- Preconnect Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,7 +40,7 @@
 <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#0b0c0f" />
 
-<!-- 🔥 Open Graph / Social Share Card (WhatsApp, Discord, Telegram, etc.) -->
+<!-- Open Graph / Social Share Card -->
 <meta property="og:title" content="Nihongo - Learn Japanese for JLPT N5 to N1" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://learn-japanese-online.vercel.app/" />

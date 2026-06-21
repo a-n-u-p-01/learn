@@ -417,55 +417,153 @@ section{scroll-margin-top:84px}
   box-sizing: border-box;
 }
 
-.kanji-grid{
-  display:grid;
+.kanji-grid {
+  display: grid;
   /* Fixed column tracks so cards always maintain identical widths */
   grid-template-columns: repeat(auto-fill, 320px); 
-  gap:16px;
+  gap: 16px;
   width: 100%;
 }
 
-.kj{
+/* --- Premium Split Kanji Card Base --- */
+.kj {
   box-sizing: border-box;
   width: 320px;
   max-width: 320px;
   min-width: 320px;
-  background:var(--bg-1);
-  border:1px solid var(--line);
-  border-radius:var(--r);
-  padding:20px;
-  transition:.16s;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
   display: flex;
   flex-direction: column;
+  gap: 14px; /* Separates the header and the readings cleanly */
+}
+.kj:hover {
+  background: var(--bg-2);
+  border-color: var(--line-2);
+  transform: translateY(-2px);
 }
 
-.kj:hover{
-  background:var(--bg-2);
-  border-color:var(--line-2);
-  transform:translateY(-2px);
+/* --- Header Area (Centered) --- */
+.kj-header {
+  text-align: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
 }
-
-.kj .big{
-  font-family:var(--jp);
-  font-size:60px;
-  line-height:1;
-  font-weight:500;
+.kj .big {
+  font-family: var(--jp);
+  font-size: 60px;
+  line-height: 1;
+  font-weight: 500;
   color: var(--fg);
-  text-align:center;
-  margin-bottom:10px;
+  text-align: center;
+  margin-bottom: 4px;
 }
-
-.kj .meta{
-  min-width:0;
-}
-
-.kj .mean{
-  text-align:center;
-  font-weight:700;
-  font-size:18px;
+.kj .mean {
+  text-align: center;
+  font-weight: 700;
+  font-size: 18px;
   color: var(--fg);
-  margin-bottom:16px;
-  text-transform:capitalize;
+  margin-bottom: 8px;
+  text-transform: capitalize;
+}
+.kj-stroke-link {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+.kj-stroke-link:hover {
+  color: var(--accent-2);
+}
+
+/* --- Readings Container (Split Blocks) --- */
+.kj-readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.kj-reading-block {
+  flex: 1 1 280px; /* On mobile, 280px wraps -> 100% width. On desktop, 50% width. */
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  
+  /* 🔥 Visual identity: Colored left border matching the badge */
+  border-left: 3px solid var(--faint); 
+  transition: border-color 0.2s ease;
+}
+.kj-reading-block.kun { border-left-color: #818cf8; }
+.kj-reading-block.on  { border-left-color: #22d3ee; }
+
+/* --- Individual Reading Row --- */
+.kj-reading-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between; /* 🔥 Pushes speaker to far right */
+}
+.kj-reading-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  flex-shrink: 0;
+}
+.kj-reading-badge.kun { color: #818cf8; border: 1px solid rgba(129, 140, 248, 0.2); }
+.kj-reading-badge.on  { color: #22d3ee; border: 1px solid rgba(34, 211, 238, 0.2); }
+
+.kj-reading-text {
+  font-family: var(--jp);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg);
+  flex: 1; /* Takes up the middle space */
+}
+
+/* --- Sentence Row --- */
+.kj-sentence-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+.kj-reading-sentence {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.kj-sentence-jp {
+  font-family: var(--jp);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--fg);
+  line-height: 1.4;
+}
+.kj-sentence-kana {
+  font-family: var(--jp);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.kj-sentence-en {
+  font-size: 12px;
+  color: var(--faint);
+  margin-top: 4px;
+  opacity: 0.6; /* 🔥 Fades out English to force eye on Japanese first */
+  line-height: 1.4;
 }
 
 /* ---------- readings ---------- */
@@ -1487,60 +1585,115 @@ justify-content: space-between;
   .fc-inner{transition:none!important}
 }
 
-/* ---- mobile bottom tab bar ---- */
-.botnav{display:none}
-@media(max-width:760px){
-  .nav .tabs{display:none}
- .botnav {
-  display: flex;                    /* Switch from grid to flex */
-  justify-content: center;          /* Center the flex items */
-  align-items: stretch;             /* Make them stretch equally */
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 60;
-  background: var(--bg);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-top: 1px solid var(--line);
-  padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
-}
+/* ---- Mobile Bottom Nav (Minimal, Grounded, Handcrafted) ---- */
+.botnav { display: none; }
 
-.botitem {
-  flex: 1;                          /* Forces every item to share the total width equally */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--faint);
-  font-family: inherit;
-  padding: 4px 2px;
-  border-radius: 11px;
-  min-height: 46px;
-  transition: color .15s, transform .12s;
-  text-align: center;               /* Ensures text centers perfectly inside its equal width */
-}
-  .botitem .bi{font-family:var(--jp);font-size:20px;line-height:1;font-weight:500;color: var(--fg);}
-  .botitem .bl{font-size:10px;font-weight:600;letter-spacing:.005em}
-  .botitem.on{color:var(--accent-2)}
-  .botitem.on .bi{transform:translateY(-1px) scale(1.06)}
-  .botitem:active{transform:scale(.93)}
-  .main{padding-bottom:78px}
-  .foot{margin-bottom:74px}
-    .kanji-grid {
-    grid-template-columns: 1fr !important;  /* Forces 1 single column that fills 100% of the space */
-    gap: 16px;
+@media (max-width: 760px) {
+  .nav .tabs { display: none; }
+
+  .botnav {
+    display: flex;               /* Flex to equally distribute items */
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    
+    /* Grounded design: no floating, no outer radius, just a glass bar */
+    background: var(--bg);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-top: 1px solid var(--line);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   }
-  .kj {
-    width: 100% !important;     /* Let the card stretch */
-    max-width: 100% !important; /* Remove the 320px cap */
-    min-width: unset !important;/* Remove the 320px minimum */
+
+  .botitem {
+    flex: 1;                     /* Forces every item to share total width equally */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--faint);
+    font-family: inherit;
+    padding: 8px 4px;
+    border-radius: 12px;
+    min-height: 48px;
+    transition: color .15s ease;
+    position: relative;          /* Needed for the underline */
   }
+
+  /* Icon styling */
+  .botitem .bi {
+    font-family: var(--jp);
+    font-size: 22px;
+    line-height: 1;
+    font-weight: 500;
+    color: var(--fg);
+    transition: transform .12s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Label styling (clearly visible) */
+  .botitem .bl {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .005em;
+    color: var(--faint);
+    transition: color .15s ease;
+  }
+
+  /* Hover for desktop mice */
+  @media (hover: hover) {
+    .botitem:hover .bl { color: var(--fg); }
+    .botitem:hover .bi { color: var(--fg); }
+  }
+
+  /* Active State - Clear Accent Color + Subtle Underline */
+  .botitem.on {
+    color: var(--accent-2);
+  }
+  .botitem.on .bi {
+    transform: translateY(-1px) scale(1.05);
+    color: var(--accent-2);
+  }
+  .botitem.on .bl {
+    color: var(--accent-2);
+  }
+
+  /* Handcrafted Underline */
+  .botitem.on::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 30%;
+    width: 40%;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 999px;
+    box-shadow: 0 0 8px var(--accent-dim);
+    animation: navLineIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  @keyframes navLineIn {
+    0% { width: 0%; opacity: 0; left: 50%; }
+    100% { width: 40%; opacity: 1; left: 30%; }
+  }
+
+  /* Click feedback */
+  .botitem:active {
+    transform: scale(0.94);
+  }
+
+  /* Adjust main content padding to avoid overlap */
+  .main { padding-bottom: 82px; }
+  .foot { margin-bottom: 76px; }
+
+  /* Kanji grid stretches perfectly on mobile */
+  .kanji-grid { grid-template-columns: 1fr !important; gap: 16px; }
+  .kj { width: 100% !important; max-width: 100% !important; min-width: unset !important; }
 }
 
 

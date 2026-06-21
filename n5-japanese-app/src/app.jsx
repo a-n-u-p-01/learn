@@ -388,7 +388,7 @@ function Nav({view,navigate,user,onSignIn,onSignOut,syncState,level,setLevel,the
       <div className="wrap nav-inner">
         <div className="brand" onClick={()=>navigate('home')} style={{cursor:'pointer'}}>
           <span className="mark">{mark}</span>
-          <span>日本語<small>JLPT {LEVEL_META.label} · Japanese</small></span>
+          <span>日本語<small>JLPT {LEVEL_META.label}</small></span>
         </div>
        
         <div className="tabs">
@@ -480,7 +480,8 @@ function BottomNav({view,navigate}){
     <nav className="botnav" aria-label="Sections">
       {TABS.map(([id])=>(
         <button key={id} className={cx('botitem',view===id&&'on')} aria-current={view===id?'page':undefined} aria-label={NAVSHORT[id]} onClick={()=>navigate(id)}>
-          <span className="bi">{NAVICON[id]}</span><span className="bl">{NAVSHORT[id]}</span>
+          <span className="bi">{NAVICON[id]}</span>
+          <span className="bl">{NAVSHORT[id]}</span>
         </button>
       ))}
     </nav>
@@ -820,7 +821,7 @@ export default function KanjiView({ nav }) {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const gridRef = useRef(null);
   const PAGE_KEY = 'kanji_page';
-  const restoredRef = useRef(false); // ⭐ Ensure we restore only once
+  const restoredRef = useRef(false);
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -836,7 +837,7 @@ export default function KanjiView({ nav }) {
     );
   }, [q]);
 
-  // ✅ Responsive items-per-page
+  // Responsive items-per-page
   useEffect(() => {
     const updateItemsPerPage = () => {
       setItemsPerPage(window.innerWidth <= 760 ? 7 : 21);
@@ -846,10 +847,9 @@ export default function KanjiView({ nav }) {
     return () => window.removeEventListener('resize', updateItemsPerPage);
   }, []);
 
-  // ✅ 1. Remember last page – only once on mount
+  // Restore page logic
   useEffect(() => {
-    if (restoredRef.current) return; // prevent re‑restoring
-
+    if (restoredRef.current) return;
     const saved = parseInt(localStorage.getItem(PAGE_KEY), 10);
     const maxPage = Math.ceil(list.length / itemsPerPage) || 1;
     if (saved && saved >= 1 && saved <= maxPage) {
@@ -857,15 +857,13 @@ export default function KanjiView({ nav }) {
     } else {
       setCurrentPage(1);
     }
-    restoredRef.current = true; // mark as restored
-  }, [list, itemsPerPage]); // ⭐ still runs if list/itemsPerPage change, but ref prevents re‑applying
+    restoredRef.current = true;
+  }, [list, itemsPerPage]);
 
-  // ✅ Save page on every change
   useEffect(() => {
     localStorage.setItem(PAGE_KEY, String(currentPage));
   }, [currentPage]);
 
-  // ✅ Pagination math & Context
   const totalPages = Math.ceil(list.length / itemsPerPage) || 1;
   const paginatedList = list.slice(
     (currentPage - 1) * itemsPerPage,
@@ -874,16 +872,14 @@ export default function KanjiView({ nav }) {
   const startIdx = (currentPage - 1) * itemsPerPage + 1;
   const endIdx = Math.min(currentPage * itemsPerPage, list.length);
 
-  // ✅ 2. Scroll to top on every page change
   const goToPage = (page) => {
     if (page < 1 || page > totalPages || page === currentPage) return;
     setCurrentPage(page);
-      if (gridRef.current) {
-        gridRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+    if (gridRef.current) {
+      gridRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
-  // ✅ 4. Helper for page number buttons (with ellipsis)
   const getVisiblePages = (current, total) => {
     const delta = 2;
     const range = [];
@@ -966,62 +962,73 @@ export default function KanjiView({ nav }) {
         <div className="kanji-grid">
           {paginatedList.map((k, i) => (
             <div className="kj" key={k.c + i}>
-              <div className="big">{k.c}</div>
-              <div className="mean">{k.mean}</div>
-<a 
-  href={`https://jisho.org/search/${k.c}%20%23kanji`} 
-  target="_blank" 
-  rel="noopener noreferrer"
-  className="swlink" 
-  style={{fontSize: '11px', textAlign: 'center', marginTop: '6px'}}
->
-  ✍️ See stroke order on Jisho
-</a>
-              {/* Japanese Section */}
-              {k.kun && k.kun !== '—' && k.kun !== '-' && (
-                <div className="reading-section ja-theme">
-                  <div className="reading-row">
-                    <span className="reading-value">
-                      <span className="lang-badge">訓</span> {displayReading(k.kun)}
-                    </span>
-                    <SpeakBtn text={displayReading(k.kun)} label="Japanese Reading" />
-                  </div>
-                  
-                  {k.kunSentence && k.kunSentence !== '—' && k.kunSentence !== '-' && (
-                    <div className="sentence-block">
-                      <div className="sentence-head">
-                        <div className="sentence-jp">{k.kunSentence}</div>
+              
+              {/* --- Header: Kanji, Meaning, Stroke Link --- */}
+              <div className="kj-header">
+                <div className="big">{k.c}</div>
+                <div className="mean">{k.mean}</div>
+                <a 
+                  href={`https://jisho.org/search/${k.c}%20%23kanji`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="kj-stroke-link"
+                >
+                  ✍️ See stroke order on Jisho ↗
+                </a>
+              </div>
+
+              {/* --- Readings Split Container --- */}
+              <div className="kj-readings">
+                
+                {/* Japanese Section (Kun) */}
+                {k.kun && k.kun !== '—' && k.kun !== '-' && (
+                  <div className="kj-reading-block kun">
+                    <div className="kj-reading-header">
+                      <span className="kj-reading-badge kun">訓</span>
+                      <span className="kj-reading-text">{displayReading(k.kun)}</span>
+                      {/* 🔥 Speaker for the individual reading */}
+                      <SpeakBtn text={displayReading(k.kun)} label="Reading" />
+                    </div>
+                    
+                    {k.kunSentence && k.kunSentence !== '—' && k.kunSentence !== '-' && (
+                      <div className="kj-sentence-row">
+                        <div className="kj-reading-sentence">
+                          <div className="kj-sentence-jp">{k.kunSentence}</div>
+                          <div className="kj-sentence-kana">{k.kunSentenceKana}</div>
+                          <div className="kj-sentence-en">{k.kunSentenceEn}</div>
+                        </div>
+                        {/* 🔥 Speaker for the full example sentence */}
                         <SpeakBtn text={k.kunSentence} label="Example Sentence" />
                       </div>
-                      <div className="sentence-kana">{k.kunSentenceKana}</div>
-                      <div className="sentence-en">{k.kunSentenceEn}</div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Chinese Section */}
-              {k.on && k.on !== '—' && k.on !== '-' && (
-                <div className="reading-section zh-theme">
-                  <div className="reading-row">
-                    <span className="reading-value">
-                      <span className="lang-badge">音</span> {k.on}
-                    </span>
-                    <SpeakBtn text={k.on} label="Chinese Reading" />
+                    )}
                   </div>
+                )}
 
-                  {k.onSentence && k.onSentence !== '—' && k.onSentence !== '-' && (
-                    <div className="sentence-block">
-                      <div className="sentence-head">
-                        <div className="sentence-jp">{k.onSentence}</div>
+                {/* Chinese Section (On) */}
+                {k.on && k.on !== '—' && k.on !== '-' && (
+                  <div className="kj-reading-block on">
+                    <div className="kj-reading-header">
+                      <span className="kj-reading-badge on">音</span>
+                      <span className="kj-reading-text">{k.on}</span>
+                      {/* 🔥 Speaker for the individual reading */}
+                      <SpeakBtn text={k.on} label="Reading" />
+                    </div>
+
+                    {k.onSentence && k.onSentence !== '—' && k.onSentence !== '-' && (
+                      <div className="kj-sentence-row">
+                        <div className="kj-reading-sentence">
+                          <div className="kj-sentence-jp">{k.onSentence}</div>
+                          <div className="kj-sentence-kana">{k.onSentenceKana}</div>
+                          <div className="kj-sentence-en">{k.onSentenceEn}</div>
+                        </div>
+                        {/* 🔥 Speaker for the full example sentence */}
                         <SpeakBtn text={k.onSentence} label="Example Sentence" />
                       </div>
-                      <div className="sentence-kana">{k.onSentenceKana}</div>
-                      <div className="sentence-en">{k.onSentenceEn}</div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
+
+              </div>
             </div>
           ))}
         </div>
@@ -2191,29 +2198,24 @@ class ErrorBoundary extends React.Component{
   }
 }
 
-/* ---------- root (guest-first; Google sign-in is optional sync, never a gate) ---------- */
 function RootApp(){
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true); // ← NEW: Prevent rendering until auth resolves
+  const [authLoading, setAuthLoading] = useState(true);
 
-    // 🔥 New theme state
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('app_theme');
     if (saved) return saved;
     return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   });
 
-   // 🔥 Apply theme to the root HTML
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('app_theme', theme);
   }, [theme]);
 
-
   useEffect(()=>{
     let alive = true;
     let unsub = null;
-    let timeoutId = null;
 
     cloud.init();
     
@@ -2226,21 +2228,13 @@ function RootApp(){
     unsub = cloud.onAuth(function(fu){ 
       if(alive) {
         setUser(fu ? {uid:fu.uid, email:fu.email||'', name:(fu.displayName||fu.email||'You').split('@')[0]} : null);
-        setAuthLoading(false); // ← Auth resolved, we can render the app
+        setAuthLoading(false); // ✅ Only called when we actually know the auth state
       }
     });
-
-    // Safety fallback: if the auth listener never fires (rare), stop loading after 2s
-    timeoutId = setTimeout(() => {
-      if(alive && authLoading) {
-        setAuthLoading(false);
-      }
-    }, 2000);
 
     return ()=>{
       alive = false;
       if(unsub) try{ unsub(); }catch(e){}
-      if(timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
@@ -2257,7 +2251,6 @@ function RootApp(){
     setUser(null); 
   };
 
-  // ← NEW: Don't show the app until auth is resolved
   if (authLoading) {
     return <Splash />;
   }
