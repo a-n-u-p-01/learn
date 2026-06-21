@@ -1171,10 +1171,29 @@ const Home =React.memo(function Home({setView,name,prog,setGoal,toggleDaily,setE
       {!user && <section className="wrap" style={{paddingTop:'18px'}}><GuestSyncBanner onSignIn={onSignIn}/></section>}
       <section className="hero wrap">
         <span className="kicker">● {L.tag}</span>
-        {L.id==='n5'
-          ? <h1>Learn Japanese<br/>from <span className="jp">ゼロ</span> to N5.</h1>
-          : <h1>Level up to<br/>JLPT <span className="jp">{L.label}</span>.</h1>}
-<p>A calm, focused place to master the JLPT {L.label} faster: read the reference once, then lock it in with flashcards, quizzes, and mock exams — with audio, mistake tracking, and progress synced everywhere.</p>       <TodayPanel prog={prog} name={name} setView={setView} toggleDaily={toggleDaily} setExamDate={setExamDate}/>
+       {!user && (
+  <>
+    {L.id === 'n5' ? (
+      <h1>
+        Learn Japanese
+        <br />
+        from <span className="jp">ゼロ</span> to N5.
+      </h1>
+    ) : (
+      <h1>
+        Level up to
+        <br />
+        JLPT <span className="jp">{L.label}</span>.
+      </h1>
+    )}
+
+    <p>
+      A calm, focused place to master the JLPT {L.label} faster: read the
+      reference once, then lock it in with flashcards, quizzes, and mock exams
+      — with audio, mistake tracking, and progress synced everywhere.
+    </p>
+  </>
+)}  <TodayPanel prog={prog} name={name} setView={setView} toggleDaily={toggleDaily} setExamDate={setExamDate}/>
         <OtherLevels levelDue={levelDue} level={L.id} setLevel={setLevel}/>
         <StreakCard prog={prog} setGoal={setGoal}/>
         <div className="cta">
@@ -1200,6 +1219,7 @@ const Home =React.memo(function Home({setView,name,prog,setGoal,toggleDaily,setE
           <div className="step"><span className="num">2</span><div><h4>Build vocabulary &amp; kanji daily</h4><p>Use the flashcards and quizzes every day. A little, often, beats cramming — and your progress follows you across devices.</p></div></div>
           <div className="step"><span className="num">3</span><div><h4>Glue it together with grammar</h4><p>Grammar turns words into sentences. Learn the patterns, then hear them in the example sentences.</p></div></div>
         </div>
+        
       </section>
 
       <section className="block wrap" style={{paddingTop:0}}>
@@ -2521,9 +2541,17 @@ function GoogleBtn({onSignIn, label, full}){
   const go=()=>{ setErr(''); setBusy(true); try{ const op=onSignIn(); if(op&&op.then) op.then(function(){setBusy(false);}).catch(function(e){ setBusy(false); setErr((e&&e.code&&e.code.indexOf('popup')>=0)?'Sign-in was cancelled.':'Could not sign in — check your connection.'); }); else setBusy(false); }catch(e){ setBusy(false); setErr('Sign-in is unavailable right now.'); } };
   return (
     <React.Fragment>
-      <button className={cx('gbtn',full&&'full')} disabled={busy} onClick={go}>
-        <span className="gico" aria-hidden="true">G</span>{busy?'Opening Google…':(label||'Continue with Google')}
-      </button>
+    <button
+  className={cx('gbtn', full && 'full')}
+  disabled={busy}
+  onClick={go}
+>
+  <span className="gico" aria-hidden="true">
+    <img src="/google.png" alt="" />
+  </span>
+
+  {busy ? 'Opening Google…' : (label || 'Continue with Google')}
+</button>
       {err && <div className="login-err" style={{marginTop:8}}>{err}</div>}
     </React.Fragment>
   );
@@ -2709,14 +2737,21 @@ function RootApp() {
     return Promise.reject(new Error('Sign-in unavailable'));
   };
 
-  const signOut = () => {
-    try { cloud.signOut(); } catch (e) {}
-    if (user && user.uid) {
-      lsDel(userKey(user.uid));   // clear progress data
-    }
-    lsDel('user_profile');        // clear profile
-    setUser(null);
-  };
+const signOut = () => {
+  try {
+    cloud.signOut();
+  } catch (e) {}
+
+  if (user && user.uid) {
+    lsDel(userKey(user.uid)); // clear progress data
+  }
+
+  lsDel('user_profile'); // clear profile
+  setUser(null);
+
+  // Redirect to landing page
+  window.location.hash = '#/';
+};
 
   // Render app immediately – no splash screen
   return (

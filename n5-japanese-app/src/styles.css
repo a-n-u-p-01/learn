@@ -335,7 +335,21 @@ section{scroll-margin-top:84px}
   50% { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 3.5px var(--good), 0 0 0 10px var(--accent-dim); }
   100% { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 3.5px var(--good), 0 0 0 6px var(--accent-dim); }
 }
+.gico{
+    width:20px;
+    height:20px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+}
 
+.gico img{
+    width:20px;
+    height:20px;
+    display:block;
+    object-fit:contain;
+}
 
 /* ---------- kanji guide accordion ---------- */
 
@@ -1502,7 +1516,7 @@ justify-content: space-between;
 .gbtn:hover{filter:brightness(.97)}
 .gbtn:disabled{opacity:.6;cursor:default}
 .gbtn.full{width:100%}
-.gbtn .gico{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:conic-gradient(from -45deg,#ea4335 0 25%,#fbbc05 25% 50%,#34a853 50% 75%,#4285f4 75% 100%);color:#fff;font-weight:800;font-size:11px;line-height:1}
+/* .gbtn .gico{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:conic-gradient(from -45deg,#ea4335 0 25%,#fbbc05 25% 50%,#34a853 50% 75%,#4285f4 75% 100%);color:#fff;font-weight:800;font-size:11px;line-height:1} */
 .syncbanner{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
   background:linear-gradient(120deg,var(--accent-dim),var(--bg-1));border:1px solid var(--line);border-radius:14px;padding:14px 18px}
 .syncbanner .sb-text{font-size:13.5px;line-height:1.55;color:var(--fg);max-width:560px}
