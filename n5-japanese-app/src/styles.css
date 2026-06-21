@@ -25,7 +25,7 @@
   /* --- Backgrounds --- */
   --bg: #f5f7fa;
   --bg-1: #ffffff;
-  --bg-2: #f0f2f5;
+  --bg-2: #ffffff;
   --bg-3: #e4e7ec;
 
   /* --- Highlight Background (Glow / Accent overlay) --- */
@@ -255,7 +255,7 @@ section{scroll-margin-top:84px}
 .hero .kicker{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--accent-2);
   background:var(--accent-dim);border:1px solid rgba(255,93,82,.25);padding:6px 13px;border-radius:999px;font-weight:600}
 .hero h1{font-size:clamp(38px,7vw,72px);line-height:1.04;font-weight:800;letter-spacing:-.02em;margin:22px 0 0}
-.hero h1 .jp{font-family:var(--jp);font-weight:700;background:linear-gradient(120deg,#fff,var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero h1 .jp{font-family:var(--jp);font-weight:700;background:linear-gradient(120deg,var(--hbg),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
 .hero p{font-size:clamp(16px,2.2vw,20px);color:var(--muted);max-width:620px;margin-top:22px}
 .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
 .stat-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:46px}
@@ -1577,7 +1577,7 @@ justify-content: space-between;
 /* ---- numbers / time / counters ---- */
 .numgrid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr))}
 .numcell{aspect-ratio:auto;padding:14px 8px;gap:3px}
-.numcell .njp{font-family:var(--jp);font-size:21px;font-weight:500;color:#fff;line-height:1.1}
+.numcell .njp{font-family:var(--jp);font-size:21px;font-weight:500;color:var(--fg);line-height:1.1}
 .numcell .nk{font-family:var(--jp);font-size:13px;color:var(--accent-2)}
 .numcell .ne{font-size:11px;color:var(--muted)}
 .counters{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
@@ -1675,7 +1675,7 @@ justify-content: space-between;
 .mastery{background:linear-gradient(180deg,var(--bg-2),var(--bg-1));border:1px solid var(--line-2);border-radius:var(--r-lg);padding:clamp(20px,4vw,30px);box-shadow:var(--shadow)}
 .mhead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .mhead h2{font-size:clamp(22px,4vw,30px);font-weight:800;letter-spacing:-.02em}
-.mpct{font-size:clamp(38px,9vw,60px);font-weight:800;line-height:.9;background:linear-gradient(120deg,#fff,var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.mpct{font-size:clamp(38px,9vw,60px);font-weight:800;line-height:.9;background:linear-gradient(120deg,var(--hbg),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
 .mpct span{font-size:.45em;color:var(--muted);-webkit-text-fill-color:var(--muted);font-weight:700}
 .pbar.big{height:12px;margin-top:16px}
 .msub{font-size:13px;color:var(--muted);margin-top:11px}
