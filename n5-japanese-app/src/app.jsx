@@ -169,7 +169,7 @@ function mergeDoc(a,b){
 
 /* ---------- spaced repetition (SM-2 lite) ---------- */
 const DAY_MS = 86400000;
-const NEW_PER_DAY = 20;
+const NEW_PER_DAY = 10;
 const REVIEW_BUFFER_DAYS = 10; // pure-review run-up before the exam (new material finishes by exam − this)
 const MIN_NEW_PER_DAY = 10;    // never schedule a slower pace than this — a far-off date means you finish early, not crawl
 function srsUpdate(s, grade){
@@ -1109,14 +1109,14 @@ function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
   const learnByDate = addDays(today, finishInDays);                        // the date you'll have learned all new cards
   const slack = (exam && dToExam!=null) ? (dToExam - finishInDays) : 0;    // review days between finishing and the exam
   const minDate = exam ? addDays(today, mDays + REVIEW_BUFFER_DAYS) : '';  // earliest date N5 is achievable from here
-  const tasks=[
-    {k:'rev', label: due>0?('Clear '+due+' due review'+(due===1?'':'s')):'Reviews — all clear', done: due===0, go:'practice'},
-    totalRemNew===0
-      ? {k:'new', label:'All cards introduced — review only', done:true, go:'practice'}
-      : {k:'new', label:'Learn '+targetNew+' new card'+(targetNew===1?'':'s')+(focus?(' · start with '+focus[1]):'')+' · '+Math.min(newDone,targetNew)+'/'+targetNew, done:newTaskDone, go:'practice'},
-    {k:'quiz', label:'Do one quiz', done:!!daily.quiz, toggle:true, go:'practice', gsub:'quiz'},
-    {k:'read', label:'One reading or listening', done:!!daily.read, toggle:true, go:'practice', gsub:'reading'}
-  ];
+ const tasks = [
+  {k:'rev', label: due>0?('Clear '+due+' due review'+(due===1?'':'s')):'Reviews — all clear', done: due===0, go:'practice', gsub:'', gsub2:''},
+  totalRemNew===0
+    ? {k:'new', label:'All cards introduced — review only', done:true, go:'practice', gsub:'', gsub2:''}
+    : {k:'new', label:'Learn '+targetNew+' new card'+(targetNew===1?'':'s')+(focus?(' · start with '+focus[1]):'')+' · '+Math.min(newDone,targetNew)+'/'+targetNew, done:newTaskDone, go:'practice', gsub:'review', gsub2: focus ? focus[0] : ''},
+  {k:'quiz', label:'Do one quiz', done:!!daily.quiz, toggle:true, go:'practice', gsub:'quiz', gsub2:''},
+  {k:'read', label:'One reading or listening', done:!!daily.read, toggle:true, go:'practice', gsub:'reading', gsub2:''}
+];
   const doneN=tasks.filter(function(t){return t.done;}).length;
   const allDone=doneN===tasks.length;
   return (
@@ -1129,8 +1129,8 @@ function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
         {tasks.map(function(t){ return (
           <div className={cx('task',t.done&&'done')} key={t.k}>
             <button className="tck" disabled={!t.toggle} onClick={t.toggle?function(){toggleDaily(t.k);}:undefined} aria-label={t.done?'done':'mark done'}>{t.done?'✓':''}</button>
-            <span className="tlb" onClick={function(){ setView(t.go, t.gsub); }}>{t.label}</span>
-            <button className="tgo" onClick={function(){ setView(t.go, t.gsub); }} aria-label="open">→</button>
+    <span className="tlb" onClick={function(){ setView(t.go, t.gsub, t.gsub2 || ''); }}>{t.label}</span>
+<button className="tgo" onClick={function(){ setView(t.go, t.gsub, t.gsub2 || ''); }} aria-label="open">→</button>
           </div>
         ); })}
       </div>
@@ -2149,8 +2149,8 @@ function CaughtUp({srsDeck, reviewed}){
     </div>
   );
 }
-function Review({cp}){
-  const D0 = (DECKS[0]&&DECKS[0][0]) || 'vocab';   // first deck of the active level
+function Review({cp, initialDeck}){
+  const D0 = initialDeck || (DECKS[0]&&DECKS[0][0]) || 'vocab';
   const [deckId,setDeckId] = useState(D0);
   const [queue,setQueue] = useState(()=>buildQueue(buildDeck(D0), (cp.prog.srs||{})[D0]||{}));
   const [reveal,setReveal] = useState(false);
@@ -2574,8 +2574,12 @@ const Practice = React.memo(function Practice({cp, tool, setTool, quizMode}){
         <button className={cx(t==='mock'&&'on')} onClick={()=>setTool('mock')}>📝 Mock</button>
         <button className={cx(t==='mistakes'&&'on')} onClick={()=>setTool('mistakes')}>⚠ Mistakes{mistakeCount?(' '+mistakeCount):''}</button>
       </div></div>
-      {t==='quiz'?<Quiz key={'q-'+(quizMode||'')} cp={cp} initialMode={quizMode}/>:t==='cards'?<Flashcards cp={cp}/>:t==='reading'?<Reading cp={cp}/>:t==='mock'?<Mock cp={cp}/>:t==='mistakes'?<MistakeReview cp={cp}/>:<Review cp={cp}/>}
-    </section>
+{t==='quiz' ? <Quiz key={'q-'+(quizMode||'')} cp={cp} initialMode={quizMode}/> :
+ t==='cards' ? <Flashcards cp={cp}/> :
+ t==='reading' ? <Reading cp={cp}/> :
+ t==='mock' ? <Mock cp={cp}/> :
+ t==='mistakes' ? <MistakeReview cp={cp}/> :
+ <Review cp={cp} initialDeck={quizMode}/>}    </section>
   );
 })
 
