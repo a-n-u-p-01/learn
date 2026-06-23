@@ -842,9 +842,16 @@ function Nav({ view, navigate, user, onSignIn, onSignOut, connectionStatus, leve
             onClick={() => setMenu(m => !m)}
             aria-label="Account menu"
           >
-            <span className={cx('ava', signedIn && 'on', statusClass)}>
-              {avatar}
-            </span>
+           <span className={cx('ava', signedIn && 'on', statusClass)}>
+  {signedIn && (user?.photoData || user?.photoURL) ? (
+    <img
+      src={user.photoData || user.photoURL}
+      alt={user.name || 'User'}
+    />
+  ) : (
+    avatar
+  )}
+</span>
             <span className="prof-name">{signedIn ? user.name : 'Guest'}</span>
           </button>
 
@@ -2906,6 +2913,38 @@ function CloudError(){
     </div></div>
   );
 }
+// ----- photo cache helper -----
+function fetchAndCachePhoto(photoURL, uid) {
+  if (!photoURL) return Promise.resolve(null);
+  const cacheKey = 'photo_' + uid;
+  return fetch(photoURL)
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to fetch photo');
+      return res.blob();
+    })
+    .then(blob => new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          // resize to 128x128 (or smaller) to save space
+          const size = 128;
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, size, size);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          lsSet(cacheKey, dataUrl);
+          resolve(dataUrl);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => reject(new Error('Image load error'));
+      img.src = URL.createObjectURL(blob);
+    }))
+    .catch(() => null);
+}
 
 /* ---------- app shell ---------- */
 function App({user,onSignIn,onSignOut,theme,setTheme}){
@@ -2989,10 +3028,17 @@ class ErrorBoundary extends React.Component{
 
 function RootApp() {
   // Immediately load user profile from localStorage (no waiting for Firebase)
-  const [user, setUser] = useState(() => {
-    const profile = lsGet('user_profile');
-    return profile || null;
-  });
+const [user, setUser] = useState(() => {
+  const profile = lsGet('user_profile');
+  if (profile) {
+    // Attempt to load cached photo data
+    const cachedPhoto = lsGet('photo_' + profile.uid);
+    if (cachedPhoto) {
+      profile.photoData = cachedPhoto;
+    }
+  }
+  return profile || null;
+});
 
   const [theme, setTheme] = useState(() => {
     const saved = localStorage.getItem('app_theme');
@@ -3014,50 +3060,58 @@ function RootApp() {
 
     if (!cloud.ok) return;
 
-    unsub = cloud.onAuth(function(fu) {
-      if (!alive) return;
-      if (fu) {
-        const profile = {
-          uid: fu.uid,
-          email: fu.email || '',
-          name: fu.displayName || fu.email || 'You',
-        };
-        // Store profile locally so it persists across reloads
-        lsSet('user_profile', profile);
-        setUser(profile);
-      } else {
-        // User signed out (from another device) – clear local profile
-        lsDel('user_profile');
-        setUser(null);
-      }
-    });
+unsub = cloud.onAuth(function(fu) {
+  if (!alive) return;
+  if (fu) {
+    const profile = {
+      uid: fu.uid,
+      email: fu.email || '',
+      name: fu.displayName || fu.email || 'You',
+      photoURL: fu.photoURL || '',
+    };
+    lsSet('user_profile', profile);
+    setUser(profile);
 
+    // Cache the photo offline
+    if (fu.photoURL) {
+      fetchAndCachePhoto(fu.photoURL, fu.uid);
+    }
+  } else {
+    lsDel('user_profile');
+    setUser(null);
+  }
+});
     return () => {
       alive = false;
       if (unsub) try { unsub(); } catch (e) {}
     };
   }, []);
 
-  const signIn = () => {
-    try {
-      if (!cloud.ok) cloud.init();
-      if (cloud.ok) {
-        return cloud.signInGoogle().then(result => {
-          const fu = result.user;
-          const profile = {
-            uid: fu.uid,
-            email: fu.email || '',
-            name: fu.displayName || fu.email || 'You',
-          };
-          lsSet('user_profile', profile);
-          setUser(profile);
-        });
-      }
-    } catch (e) {
-      return Promise.reject(e);
+const signIn = () => {
+  try {
+    if (!cloud.ok) cloud.init();
+    if (cloud.ok) {
+      return cloud.signInGoogle().then(result => {
+        const fu = result.user;
+        const profile = {
+          uid: fu.uid,
+          email: fu.email || '',
+          name: fu.displayName || fu.email || 'You',
+          photoURL: fu.photoURL || '',
+        };
+        lsSet('user_profile', profile);
+        setUser(profile);
+
+        if (fu.photoURL) {
+          fetchAndCachePhoto(fu.photoURL, fu.uid);
+        }
+      });
     }
-    return Promise.reject(new Error('Sign-in unavailable'));
-  };
+  } catch (e) {
+    return Promise.reject(e);
+  }
+  return Promise.reject(new Error('Sign-in unavailable'));
+};
 
 const signOut = () => {
   try {
