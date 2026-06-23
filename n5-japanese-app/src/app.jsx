@@ -495,22 +495,31 @@ const checkRemote = useCallback(async () => {
     return Object.assign({}, prev, { best });
   });
 
-  const reviewCard = (deck, front, grade) => commit(prev => {
-    const srs = Object.assign({}, prev.srs || {});
-    const dd = Object.assign({}, srs[deck] || {});
-    const prevCard = dd[front];
-    const ns = srsUpdate(prevCard, grade);
-    ns.first = (prevCard && prevCard.first) ? prevCard.first : dayStr();
-    dd[front] = ns;
-    srs[deck] = dd;
-    const known = Object.assign({}, prev.known);
-    const kd = Object.assign({}, known[deck] || {});
-    if (grade !== 'again' && ns.reps >= 2) kd[front] = 1;
-    if (grade === 'again') delete kd[front];
-    known[deck] = kd;
-    const stats = bumpStats(prev.stats, dayStr());
-    return Object.assign({}, prev, { known, srs, stats });
-  });
+ const reviewCard = (deck, front, grade) => commit(prev => {
+  const srs = Object.assign({}, prev.srs || {});
+  const dd = Object.assign({}, srs[deck] || {});
+  const prevCard = dd[front];
+  const ns = srsUpdate(prevCard, grade);
+  ns.first = (prevCard && prevCard.first) ? prevCard.first : dayStr();
+  dd[front] = ns;
+  srs[deck] = dd;
+  const known = Object.assign({}, prev.known);
+  const kd = Object.assign({}, known[deck] || {});
+  if (grade !== 'again' && ns.reps >= 2) kd[front] = 1;
+  if (grade === 'again') delete kd[front];
+  known[deck] = kd;
+  const stats = bumpStats(prev.stats, dayStr());
+
+  // --- NEW: increment per‑deck daily review count ---
+  const today = dayStr();
+  const daily = Object.assign({}, prev.daily || {});
+  const day = Object.assign({}, daily[today] || {});
+  const key = deck + '_reviewed';
+  day[key] = (day[key] || 0) + 1;
+  daily[today] = day;
+
+  return Object.assign({}, prev, { known, srs, stats, daily });
+});
 
   const setGoal = (n) => commit(prev => {
     const stats = Object.assign({ streak: 0, best: 0, lastActive: '', goal: 20, todayDate: '', todayCount: 0 }, prev.stats || {});
@@ -2152,9 +2161,26 @@ function Review({cp}){
   const cur = card ? srsDeck[card.front] : null;
   const isNew = card && !srsDeck[card.front];
   const today = dayStr();
+
+  // --- per‑deck reviewed today (from daily store) ---
+  const deckReviewedToday = (cp.prog.daily || {})[today]?.[deckId + '_reviewed'] || 0;
+
+  // --- helper to count due cards in a single deck ---
+  const dueCountInDeck = (deckSrs) => {
+    const now = Date.now();
+    let n = 0;
+    for (const f in deckSrs) {
+      if (deckSrs[f].due <= now) n++;
+    }
+    return n;
+  };
+
+  const reviewRemaining = dueCountInDeck(srsDeck);
+  const remainingNew = remainingNewInDeck(cp.prog.srs, deckId);
+  const maxNewToday = Math.min(NEW_PER_DAY, remainingNew);
   const newToday = newIntroducedToday(srsDeck, today);
-  const stats = cp.prog.stats||{};
-  const reviewedToday = (stats.todayDate===today) ? (stats.todayCount||0) : 0;
+  const newRemainingToday = Math.max(0, maxNewToday - newToday);
+
   const grade=(g)=>{
     if(!card) return;
     cp.reviewCard(deckId, card.front, g);
@@ -2162,6 +2188,7 @@ function Review({cp}){
     setQueue(q=>{ const first=q[0], rest=q.slice(1); if(g==='again'){ const pos=Math.min(rest.length,4); const nq=rest.slice(); nq.splice(pos,0,first); return nq; } return rest; });
     setReveal(false);
   };
+
   useEffect(()=>{
     const h=(e)=>{
       if(!card || e.repeat) return;
@@ -2171,14 +2198,32 @@ function Review({cp}){
     };
     window.addEventListener('keydown',h); return ()=>window.removeEventListener('keydown',h);
   },[card,reveal]);
+
   return (
     <div className="study-wrap">
-      <div className="chips" style={{justifyContent:'center',marginBottom:10}}>{DECKS.map(([id,l])=>(<span key={id} className={cx('chip',deckId===id&&'on')} onClick={()=>pickDeck(id)}>{l}</span>))}</div>
-      <div className="muted center" style={{fontSize:'12px',marginBottom:18}}>Each deck has its own daily schedule (up to {NEW_PER_DAY} new/day).</div>
+      <div className="chips" style={{justifyContent:'center',marginBottom:10}}>
+        {DECKS.map(([id,l])=>(
+          <span key={id} className={cx('chip',deckId===id&&'on')} onClick={()=>pickDeck(id)}>{l}</span>
+        ))}
+      </div>
+      <div className="muted center" style={{fontSize:'12px',marginBottom:18}}>
+        Each deck has its own daily schedule (up to {NEW_PER_DAY} new/day).
+      </div>
       {card ? (
         <React.Fragment>
-          <div className="fc-bar"><span className="fc-count">Remaining <b>{queue.length}</b></span><span className="fc-count">New today <b>{newToday}</b>/{NEW_PER_DAY}　·　Reviewed today <b>{reviewedToday}</b></span></div>
-          <div className="pbar" style={{marginBottom:16}}><i style={{width:((reviewed+queue.length)?Math.round(reviewed/(reviewed+queue.length)*100):0)+'%'}}/></div>
+          {/* --- NEW STATS BAR (syncs with Today's Plan) --- */}
+          <div className="fc-bar" style={{display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:'8px'}}>
+            <span className="fc-count">Review remaining <b>{reviewRemaining}</b></span>
+            {remainingNew > 0 && (
+              <span className="fc-count">New remaining today <b>{newRemainingToday}</b></span>
+            )}
+            <span className="fc-count">Reviewed today <b>{deckReviewedToday}</b></span>
+          </div>
+
+          <div className="pbar" style={{marginBottom:16}}>
+            <i style={{width:((reviewed+queue.length)?Math.round(reviewed/(reviewed+queue.length)*100):0)+'%'}}/>
+          </div>
+
           <div className={cx('flashcard',reveal&&'flipped')} key={card.front} onClick={()=>setReveal(r=>!r)}>
             <div className="fc-inner">
               <div className="fc-face fc-front"><span className="tag">{card.tag}{isNew?' · NEW':''}</span><span className={card.fc==='jp'?'q':'qs'}>{card.front}</span><span className="hint">tap to reveal</span></div>
