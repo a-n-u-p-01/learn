@@ -219,6 +219,15 @@ function bumpStats(stats, today){
   s.todayCount=(s.todayCount||0)+1; s.lastActive=today; s.best=Math.max(s.best||0,s.streak||0);
   return s;
 }
+// Count due cards in a single deck (flat object { front: card })
+function dueCountInDeck(deckSrs) {
+  const now = Date.now();
+  let n = 0;
+  for (const f in deckSrs) {
+    if (deckSrs[f].due <= now) n++;
+  }
+  return n;
+}
 function effectiveStreak(stats){ if(!stats||!stats.lastActive)return 0; const t=dayStr(); return (stats.lastActive===t||stats.lastActive===addDays(t,-1))?(stats.streak||0):0; }
 function mergeStats(a,b){ if(!a)return b||null; if(!b)return a; const base=(a.lastActive>=b.lastActive)?a:b; const out=Object.assign({},base); out.best=Math.max(a.best||0,b.best||0); out.goal=base.goal||a.goal||b.goal||20; if(a.todayDate&&a.todayDate===b.todayDate)out.todayCount=Math.max(a.todayCount||0,b.todayCount||0); return out; }
 function useCloudProgress(user, level) {
@@ -659,6 +668,7 @@ function speak(text, h) {
     console.error('[speak] Error:', e);
   }
 }
+
 function SpeakBtn({ text, label, lg }) {
   const [hasOfflineVoice, setHasOfflineVoice] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -1078,6 +1088,38 @@ function NextLevel({pct, setLevel}){
 }
 function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
   const srs=prog.srs||{};
+  // Find the deck with the most due cards
+let maxDueDeck = null;
+let maxDue = 0;
+DECKS.forEach(([id]) => {
+  const deckSrs = srs[id] || {};
+  const due = dueCountInDeck(deckSrs);
+  if (due > maxDue) {
+    maxDue = due;
+    maxDueDeck = id;
+  }
+});
+// Find the weakest section that has a quiz mode
+const modeMap = {
+  'Kana': 'kana',
+  'Vocabulary': 'vocab',
+  'Kanji': 'kanji',
+  'Grammar': 'grammar',
+  'Listening': 'listen'
+};
+
+let weakestMode = 'vocab'; // default
+let lowestAccuracy = 101;
+
+const ss = prog.secStats || {};
+for (const [section, arr] of Object.entries(ss)) {
+  if (arr.length === 0) continue;
+  const accuracy = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 100);
+  if (accuracy < lowestAccuracy && modeMap[section]) {
+    lowestAccuracy = accuracy;
+    weakestMode = modeMap[section];
+  }
+}
   const today=dayStr();
   const daily=(prog.daily||{})[today]||{};
   const due=dueCount(srs);
@@ -1110,13 +1152,11 @@ function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
   const slack = (exam && dToExam!=null) ? (dToExam - finishInDays) : 0;    // review days between finishing and the exam
   const minDate = exam ? addDays(today, mDays + REVIEW_BUFFER_DAYS) : '';  // earliest date N5 is achievable from here
  const tasks = [
-  {k:'rev', label: due>0?('Clear '+due+' due review'+(due===1?'':'s')):'Reviews — all clear', done: due===0, go:'practice', gsub:'', gsub2:''},
-  totalRemNew===0
+  {k:'rev', label: due>0?('Clear '+due+' due review'+(due===1?'':'s')):'Reviews — all clear', done: due===0, go:'practice', gsub:'', gsub2: maxDueDeck || ''},  totalRemNew===0
     ? {k:'new', label:'All cards introduced — review only', done:true, go:'practice', gsub:'', gsub2:''}
     : {k:'new', label:'Learn '+targetNew+' new card'+(targetNew===1?'':'s')+(focus?(' · start with '+focus[1]):'')+' · '+Math.min(newDone,targetNew)+'/'+targetNew, done:newTaskDone, go:'practice', gsub:'review', gsub2: focus ? focus[0] : ''},
-  {k:'quiz', label:'Do one quiz', done:!!daily.quiz, toggle:true, go:'practice', gsub:'quiz', gsub2:''},
-  {k:'read', label:'One reading or listening', done:!!daily.read, toggle:true, go:'practice', gsub:'reading', gsub2:''}
-];
+  {k:'quiz', label:'Do one quiz', done:!!daily.quiz, toggle:true, go:'practice', gsub:'quiz', gsub2: weakestMode},
+  {k:'read', label:'One reading or listening', done:!!daily.read, toggle:true, go:'practice', gsub:'reading', gsub2:''}];
   const doneN=tasks.filter(function(t){return t.done;}).length;
   const allDone=doneN===tasks.length;
   return (
