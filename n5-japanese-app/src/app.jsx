@@ -843,14 +843,11 @@ function Nav({ view, navigate, user, onSignIn, onSignOut, connectionStatus, leve
             aria-label="Account menu"
           >
            <span className={cx('ava', signedIn && 'on', statusClass)}>
-  {signedIn && (user?.photoData || user?.photoURL) ? (
-    <img
-      src={user.photoData || user.photoURL}
-      alt={user.name || 'User'}
-    />
-  ) : (
-    avatar
-  )}
+  {signedIn && user?.photoData ? (
+  <img src={user.photoData} alt={user.name || 'User'} />
+) : (
+  avatar
+)}
 </span>
             <span className="prof-name">{signedIn ? user.name : 'Guest'}</span>
           </button>
@@ -2117,25 +2114,18 @@ function kanjiReadingText(k) {
  return k.kun && k.kun !== '—' ? displayReading(k.kun) : k.on;
 }
 
-function Flashcards({ cp }) {
-  const D0 = (DECKS[0] && DECKS[0][0]) || 'vocab';
-  const [deckId, setDeckId] = useState(D0);
-  const [order, setOrder] = useState(() => buildDeck(D0));
+function Flashcards({ cp, deckId }) {
+  const [order, setOrder] = useState(() => buildDeck(deckId));
   const [idx, setIdx] = useState(0);
   const [flip, setFlip] = useState(false);
   const [showSentence, setShowSentence] = useState(false);
 
-  // Reset showSentence when card changes
   useEffect(() => {
-    setShowSentence(false);
-  }, [idx, deckId]);
-
-  const pickDeck = useCallback((id) => {
-    setDeckId(id);
-    setOrder(buildDeck(id));
+    setOrder(buildDeck(deckId));
     setIdx(0);
     setFlip(false);
-  }, []);
+    setShowSentence(false);
+  }, [deckId]);
 
   const reshuffle = () => {
     setOrder(o => shuffle(o));
@@ -2169,21 +2159,19 @@ function Flashcards({ cp }) {
     return () => window.removeEventListener('keydown', h);
   }, [go]);
 
+  useEffect(() => {
+    setShowSentence(false);
+  }, [idx, deckId]);
+
   return (
     <div className="study-wrap">
-      <div className="chips" style={{ justifyContent: 'center', marginBottom: 22 }}>
-        {DECKS.map(([id, l]) => (
-          <span key={id} className={cx('chip', deckId === id && 'on')} onClick={() => pickDeck(id)}>
-            {l}
-          </span>
-        ))}
-      </div>
+      {/* No chips – deck selection is in parent */}
+
       <div className="fc-bar">
         <span className="fc-count">Card <b>{idx + 1}</b> / {order.length}</span>
         <span className="fc-count">Known <b>{knownCount}</b> / {order.length}</span>
       </div>
 
-      {/* --- Sentence toolbar: only visible when card is flipped (back visible) --- */}
       {flip && hasSentence && (
         <div className="sentence-toolbar">
           <button
@@ -2273,62 +2261,102 @@ function makeQuestions(mode, cat){
   const allA=pool.map(x=>x.a);  
   return shuffle(pool).slice(0,10).map(function(it){ return {kind:kind, prompt:it.p, sub:it.sub, say:it.say, correct:it.a, options:buildOptions(it.a, allA)}; });
 }
-function Quiz({cp, initialMode}){
-  const [mode,setMode]=useState(initialMode || (QUIZZES[0]&&QUIZZES[0][0]) || 'vocab');
-  const [seed,setSeed]=useState(0);
-  const [i,setI]=useState(0);
-  const [picked,setPicked]=useState(null);
-  const [score,setScore]=useState(0);
-  const [done,setDone]=useState(false);
-  const [cat,setCat]=useState('All');
-  const best=cp.prog.best||{};
-  const questions=useMemo(()=>makeQuestions(mode,cat),[mode,cat,seed]);
-  const N=questions.length;
-  const q=questions[i];
-  useEffect(()=>{ if(mode==='listen' && !done && questions[i]) speak(questions[i].say); },[mode,seed,i,done]);
-  const restart=()=>{ setSeed(s=>s+1); setI(0); setPicked(null); setScore(0); setDone(false); };
-  const changeMode=(m)=>{ setMode(m); setCat('All'); setSeed(s=>s+1); setI(0); setPicked(null); setScore(0); setDone(false); };
-  const changeCat=(c)=>{ setCat(c); setSeed(s=>s+1); setI(0); setPicked(null); setScore(0); setDone(false); };
-  const choose=(opt)=>{ if(picked!==null)return; setPicked(opt); const ok=opt===q.correct; if(ok)setScore(s=>s+1);
-    try{ const sec=MODE_SECTION[mode]||'Vocabulary'; cp.recordAttempt(sec, ok); if(!ok) cp.addMistake({section:sec, prompt:q.prompt, sub:q.sub||'', say:q.say||'', correct:q.correct, options:q.options, kind:q.kind}); }catch(e){} };
-  const next=()=>{ if(i<N-1){ setI(i+1); setPicked(null); } else { setDone(true); cp.setBest(mode,score); } };
-  const pct=Math.round(score/N*100);
-  const msg=pct===100?'Perfect! 完璧です！':pct>=70?'Great work — keep going!':pct>=40?'Good start. Review and retry.':'Keep practicing — you\'ve got this.';
-  const reveal = picked!==null;
-  const promptLbl = mode==='listen'?'Listen, then choose the meaning':(mode==='grammar'?'Choose the correct word':(mode==='kana'?'What is the reading?':'What does this mean?'));
+function Quiz({ cp, mode, setMode, cat, setCat }) {
+  const [seed, setSeed] = useState(0);
+  const [i, setI] = useState(0);
+  const [picked, setPicked] = useState(null);
+  const [score, setScore] = useState(0);
+  const [done, setDone] = useState(false);
+  const best = cp.prog.best || {};
+
+  const questions = useMemo(() => makeQuestions(mode, cat), [mode, cat, seed]);
+  const N = questions.length;
+  const q = questions[i];
+
+  useEffect(() => {
+    if (mode === 'listen' && !done && questions[i]) speak(questions[i].say);
+  }, [mode, seed, i, done, questions]);
+
+  const restart = () => {
+    setSeed(s => s + 1);
+    setI(0);
+    setPicked(null);
+    setScore(0);
+    setDone(false);
+  };
+
+  const changeMode = (m) => {
+    setMode(m);
+    setCat('All');
+    setSeed(s => s + 1);
+    setI(0);
+    setPicked(null);
+    setScore(0);
+    setDone(false);
+  };
+
+  const choose = (opt) => {
+    if (picked !== null) return;
+    setPicked(opt);
+    const ok = opt === q.correct;
+    if (ok) setScore(s => s + 1);
+    try {
+      const sec = MODE_SECTION[mode] || 'Vocabulary';
+      cp.recordAttempt(sec, ok);
+      if (!ok) cp.addMistake({ section: sec, prompt: q.prompt, sub: q.sub || '', say: q.say || '', correct: q.correct, options: q.options, kind: q.kind });
+    } catch (e) {}
+  };
+
+  const next = () => {
+    if (i < N - 1) {
+      setI(i + 1);
+      setPicked(null);
+    } else {
+      setDone(true);
+      cp.setBest(mode, score);
+    }
+  };
+
+  const pct = Math.round(score / N * 100);
+  const msg = pct === 100 ? 'Perfect! 完璧です！' : pct >= 70 ? 'Great work — keep going!' : pct >= 40 ? 'Good start. Review and retry.' : 'Keep practicing — you\'ve got this.';
+  const reveal = picked !== null;
+  const promptLbl = mode === 'listen' ? 'Listen, then choose the meaning' : (mode === 'grammar' ? 'Choose the correct word' : (mode === 'kana' ? 'What is the reading?' : 'What does this mean?'));
+
   return (
     <div className="quiz-wrap">
-      <div className="chips" style={{justifyContent:'center',marginBottom:(mode==='vocab'||mode==='listen')?12:22}}>{QUIZZES.map(([id,l])=>(<span key={id} className={cx('chip',mode===id&&'on')} onClick={()=>changeMode(id)}>{l}</span>))}</div>
-      {(mode==='vocab'||mode==='listen') && (
-        <div className="chips catchips" style={{justifyContent:'center',marginBottom:22}}>
-          {VOCAB_CATS.map(function(c){ return <span key={c} className={cx('chip',cat===c&&'on')} onClick={()=>changeCat(c)}>{c}</span>; })}
-        </div>
-      )}
+      {/* No chips – modes and categories are now in parent */}
+
       {!done ? (
         <div className="qcard">
-          <div className="pbar" style={{marginBottom:24}}><i style={{width:(i/N*100)+'%'}}/></div>
+          <div className="pbar" style={{ marginBottom: 24 }}><i style={{ width: (i / N * 100) + '%' }} /></div>
           <div className="q-prompt">
             <div className="lbl">{promptLbl}</div>
-            {q.kind==='audio' ? (
+            {q.kind === 'audio' ? (
               <div>
-                <button className="spk lg" style={{margin:'10px auto 4px'}} aria-label="Play audio" onClick={()=>speak(q.say)}>🔊</button>
-                {reveal ? <div style={{fontFamily:'var(--jp)',fontSize:q.long?'clamp(17px,3.4vw,23px)':'clamp(26px,6vw,40px)',fontWeight:q.long?500:700,lineHeight:1.5}}>{q.prompt}<span style={{display:'block',fontSize:'13px',color:'var(--muted)',fontWeight:400,marginTop:5}}>{q.sub}</span></div> : <div className="muted" style={{fontSize:'13px'}}>tap 🔊 to replay</div>}
+                <button className="spk lg" style={{ margin: '10px auto 4px' }} aria-label="Play audio" onClick={() => speak(q.say)}>🔊</button>
+                {reveal ? <div style={{ fontFamily: 'var(--jp)', fontSize: q.long ? 'clamp(17px,3.4vw,23px)' : 'clamp(26px,6vw,40px)', fontWeight: q.long ? 500 : 700, lineHeight: 1.5 }}>{q.prompt}<span style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', fontWeight: 400, marginTop: 5 }}>{q.sub}</span></div> : <div className="muted" style={{ fontSize: '13px' }}>tap 🔊 to replay</div>}
               </div>
             ) : (
-              <div className={q.kind==='jp-big'?'big':'med'}>{q.prompt}</div>
+              <div className={q.kind === 'jp-big' ? 'big' : 'med'}>{q.prompt}</div>
             )}
-            {(q.kind==='jp-big'||q.kind==='jp-med') && speechSupported && <button className="spk lg" style={{margin:'14px auto 0'}} aria-label="Listen" onClick={()=>speak(q.say)}>🔊</button>}
+            {(q.kind === 'jp-big' || q.kind === 'jp-med') && speechSupported && <button className="spk lg" style={{ margin: '14px auto 0' }} aria-label="Listen" onClick={() => speak(q.say)}>🔊</button>}
           </div>
           <div className="opts">
-            {q.options.map((opt,k)=>{ let st=''; if(reveal){ if(opt===q.correct)st='correct'; else if(opt===picked)st='wrong'; }
-              return <button key={opt+k} className={cx('opt',st)} disabled={reveal} onClick={()=>choose(opt)}><span className="k">{String.fromCharCode(65+k)}</span>{opt}</button>; })}
+            {q.options.map((opt, k) => {
+              let st = '';
+              if (reveal) {
+                if (opt === q.correct) st = 'correct';
+                else if (opt === picked) st = 'wrong';
+              }
+              return <button key={opt + k} className={cx('opt', st)} disabled={reveal} onClick={() => choose(opt)}><span className="k">{String.fromCharCode(65 + k)}</span>{opt}</button>;
+            })}
           </div>
-          <div className={cx('feedback',reveal&&(picked===q.correct?'ok':'no'))}>{reveal?((picked===q.correct?'Correct!':'Answer: '+q.correct)+(q.explain?(' · '+q.explain):'')):''}</div>
-          <div className="q-foot"><span className="score-pill">Score <b>{score}</b> / {N}　·　Question {i+1}/{N}</span><button className="btn primary" disabled={!reveal} onClick={next}>{i<N-1?'Next →':'Finish'}</button></div>
+          <div className={cx('feedback', reveal && (picked === q.correct ? 'ok' : 'no'))}>{reveal ? ((picked === q.correct ? 'Correct!' : 'Answer: ' + q.correct) + (q.explain ? (' · ' + q.explain) : '')) : ''}</div>
+          <div className="q-foot"><span className="score-pill">Score <b>{score}</b> / {N}　·　Question {i + 1}/{N}</span><button className="btn primary" disabled={!reveal} onClick={next}>{i < N - 1 ? 'Next →' : 'Finish'}</button></div>
         </div>
-      ):(
+      ) : (
         <div className="qcard"><div className="result"><div className="pct">{pct}%</div><div className="msg">{msg}</div>
-          <div className="score-pill" style={{display:'block',marginBottom:18}}>You scored <b>{score}</b> / {N}　·　Best: <b>{Math.max(best[mode]||0,score)}</b> / {N}</div>
+          <div className="score-pill" style={{ display: 'block', marginBottom: 18 }}>You scored <b>{score}</b> / {N}　·　Best: <b>{Math.max(best[mode] || 0, score)}</b> / {N}</div>
           <button className="btn primary" onClick={restart}>Try again</button></div></div>
       )}
     </div>
@@ -2352,25 +2380,18 @@ function CaughtUp({srsDeck, reviewed}){
     </div>
   );
 }
-function Review({ cp, initialDeck }) {
-  const D0 = initialDeck || (DECKS[0] && DECKS[0][0]) || 'vocab';
-  const [deckId, setDeckId] = useState(D0);
-  const [queue, setQueue] = useState(() => buildQueue(buildDeck(D0), (cp.prog.srs || {})[D0] || {}));
+function Review({ cp, deckId }) {
+  const [queue, setQueue] = useState(() => buildQueue(buildDeck(deckId), (cp.prog.srs || {})[deckId] || {}));
   const [reveal, setReveal] = useState(false);
   const [reviewed, setReviewed] = useState(0);
   const [showSentence, setShowSentence] = useState(false);
 
-  // Reset showSentence when card changes
   useEffect(() => {
-    setShowSentence(false);
-  }, [queue[0]?.front]);
-
-  const pickDeck = (id) => {
-    setDeckId(id);
-    setQueue(buildQueue(buildDeck(id), (cp.prog.srs || {})[id] || {}));
+    setQueue(buildQueue(buildDeck(deckId), (cp.prog.srs || {})[deckId] || {}));
     setReveal(false);
     setReviewed(0);
-  };
+    setShowSentence(false);
+  }, [deckId]);
 
   const card = queue[0];
   const srsDeck = (cp.prog.srs || {})[deckId] || {};
@@ -2435,16 +2456,7 @@ function Review({ cp, initialDeck }) {
 
   return (
     <div className="study-wrap">
-      <div className="chips" style={{ justifyContent: 'center', marginBottom: 10 }}>
-        {DECKS.map(([id, l]) => (
-          <span key={id} className={cx('chip', deckId === id && 'on')} onClick={() => pickDeck(id)}>
-            {l}
-          </span>
-        ))}
-      </div>
-      <div className="muted center" style={{ fontSize: '12px', marginBottom: 18 }}>
-        Each deck has its own daily schedule (up to {NEW_PER_DAY} new/day).
-      </div>
+      {/* No chips – deck selection is in parent */}
 
       {card ? (
         <React.Fragment>
@@ -2460,7 +2472,6 @@ function Review({ cp, initialDeck }) {
             <i style={{ width: ((reviewed + queue.length) ? Math.round(reviewed / (reviewed + queue.length) * 100) : 0) + '%' }} />
           </div>
 
-          {/* --- Sentence toolbar: only visible when card is revealed (back visible) --- */}
           {reveal && hasSentence && (
             <div className="sentence-toolbar">
               <button
@@ -2833,36 +2844,157 @@ function MistakeReview({cp}){
   );
 }
 
-/* ---------- practice ---------- */
-const Practice = React.memo(function Practice({cp, tool, setTool, quizMode}){
-  const t = tool||'review';
-  const mistakeCount = (cp.prog.mistakes||[]).length;
-  const blurb = t==='mistakes' ? 'Re-drill exactly what you got wrong in quizzes, reading and mock tests — until you get it right.'
-    : t==='mock' ? ('A timed, scored exam that mixes every section — see if you\'re ready for the real '+LEVEL_META.label+'.')
-    : t==='reading' ? ('Read short '+LEVEL_META.label+' texts and answer the questions — just like the exam\'s reading section.')
-    : t==='quiz' ? 'Quiz yourself on kana, vocab, kanji, listening, and grammar — all scored and synced.'
-    : t==='cards' ? 'Free, unlimited flip-through of any deck — browse at your own pace.'
-    : 'Smart review schedules every card for you — hard ones return sooner, easy ones later. Synced to your account.';
+const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: initialQuizMode }) {
+  const [isPrimaryDropdownOpen, setIsPrimaryDropdownOpen] = useState(false);
+  const [isSecondaryDropdownOpen, setIsSecondaryDropdownOpen] = useState(false);
+
+  // Deck state (used by Review & Flashcards)
+  const [deckId, setDeckId] = useState(() => (DECKS[0] && DECKS[0][0]) || 'vocab');
+  // Quiz state
+  const [quizMode, setQuizMode] = useState(initialQuizMode || (QUIZZES[0] && QUIZZES[0][0]) || 'vocab');
+  const [quizCat, setQuizCat] = useState('All');
+
+  const t = tool || 'review';
+  const mistakeCount = (cp.prog.mistakes || []).length;
+
+  const primaryWrapperRef = useRef(null);
+  const secondaryWrapperRef = useRef(null);
+
+  // Click‑outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (primaryWrapperRef.current && !primaryWrapperRef.current.contains(event.target)) {
+        setIsPrimaryDropdownOpen(false);
+      }
+      if (secondaryWrapperRef.current && !secondaryWrapperRef.current.contains(event.target)) {
+        setIsSecondaryDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Secondary options: decks (review/cards) or quiz modes (quiz)
+  const secondaryOptions = useMemo(() => {
+    if (t === 'review' || t === 'cards') {
+      return { type: 'deck', items: DECKS, current: deckId, setter: setDeckId };
+    } else if (t === 'quiz') {
+      const items = QUIZZES.map(([id, label]) => ({ id, label }));
+      return { type: 'quizMode', items, current: quizMode, setter: setQuizMode };
+    }
+    return null;
+  }, [t, deckId, quizMode]);
+
+  // Show category chips only for vocab/listen quiz
+  const showCategoryChips = t === 'quiz' && (quizMode === 'vocab' || quizMode === 'listen');
+
   return (
     <section className="block wrap">
-      <div className="shead" style={{justifyContent:'center',textAlign:'center'}}><div><div className="ey">Active recall</div><h2>Practice</h2><p style={{margin:'8px auto 0'}}>{blurb}</p></div></div>
-      <div className="center" style={{marginBottom:30}}><div className="seg">
-        <button className={cx(t==='review'&&'on')} onClick={()=>setTool('review')}>🧠 Review</button>
-        <button className={cx(t==='cards'&&'on')} onClick={()=>setTool('cards')}>🃏 Browse</button>
-        <button className={cx(t==='quiz'&&'on')} onClick={()=>setTool('quiz')}>✦ Quiz</button>
-        <button className={cx(t==='reading'&&'on')} onClick={()=>setTool('reading')}>📖 Reading</button>
-        <button className={cx(t==='mock'&&'on')} onClick={()=>setTool('mock')}>📝 Mock</button>
-        <button className={cx(t==='mistakes'&&'on')} onClick={()=>setTool('mistakes')}>⚠ Mistakes{mistakeCount?(' '+mistakeCount):''}</button>
-      </div></div>
-{t==='quiz' ? <Quiz key={'q-'+(quizMode||'')} cp={cp} initialMode={quizMode}/> :
- t==='cards' ? <Flashcards cp={cp}/> :
- t==='reading' ? <Reading cp={cp}/> :
- t==='mock' ? <Mock cp={cp}/> :
- t==='mistakes' ? <MistakeReview cp={cp}/> :
- <Review cp={cp} initialDeck={quizMode}/>}    </section>
-  );
-})
+      {/* --- Two dropdowns: right‑aligned, primary on far right --- */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: 30, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {/* Secondary dropdown (decks or quiz modes) */}
+        {secondaryOptions && (
+          <div className="dropdown-wrapper" ref={secondaryWrapperRef}>
+            <button className="dropdown-toggle" onClick={() => setIsSecondaryDropdownOpen(prev => !prev)}>
+              <span>
+                {secondaryOptions.type === 'deck'
+                  ? DECKS.find(([id]) => id === secondaryOptions.current)?.[1] || 'Select Deck'
+                  : QUIZZES.find(([id]) => id === secondaryOptions.current)?.[1] || 'Select Mode'}
+              </span>
+              <span className={cx('dropdown-arrow', isSecondaryDropdownOpen && 'open')}>▾</span>
+            </button>
+            {isSecondaryDropdownOpen && (
+              <ul className="dropdown-menu">
+                {secondaryOptions.items.map((item) => {
+                  const id = item[0] !== undefined ? item[0] : item.id;
+                  const label = item[1] !== undefined ? item[1] : item.label;
+                  const isActive = secondaryOptions.type === 'deck'
+                    ? id === deckId
+                    : id === quizMode;
+                  return (
+                    <li
+                      key={id}
+                      className={cx('chip', isActive && 'on')}
+                      onClick={() => {
+                        if (secondaryOptions.type === 'deck') {
+                          setDeckId(id);
+                        } else {
+                          setQuizMode(id);
+                          setQuizCat('All'); // reset category when switching mode
+                        }
+                        setIsSecondaryDropdownOpen(false);
+                      }}
+                    >
+                      {label}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
 
+        {/* Primary tool dropdown (far right) */}
+        <div className="dropdown-wrapper" ref={primaryWrapperRef}>
+          <button className="dropdown-toggle" onClick={() => setIsPrimaryDropdownOpen(prev => !prev)}>
+            <span>
+              {t === 'review' && '🧠 Review'}
+              {t === 'cards' && '🃏 Browse'}
+              {t === 'quiz' && '✦ Quiz'}
+              {t === 'reading' && '📖 Reading'}
+              {t === 'mock' && '📝 Mock'}
+              {t === 'mistakes' && `⚠ Mistakes${mistakeCount > 0 ? ` ${mistakeCount}` : ''}`}
+            </span>
+            <span className={cx('dropdown-arrow', isPrimaryDropdownOpen && 'open')}>▾</span>
+          </button>
+          {isPrimaryDropdownOpen && (
+            <ul className="dropdown-menu">
+              <li className={cx('chip', t === 'review' && 'on')} onClick={() => { setTool('review'); setIsPrimaryDropdownOpen(false); }}>🧠 Review</li>
+              <li className={cx('chip', t === 'cards' && 'on')} onClick={() => { setTool('cards'); setIsPrimaryDropdownOpen(false); }}>🃏 Browse</li>
+              <li className={cx('chip', t === 'quiz' && 'on')} onClick={() => { setTool('quiz'); setIsPrimaryDropdownOpen(false); }}>✦ Quiz</li>
+              <li className={cx('chip', t === 'reading' && 'on')} onClick={() => { setTool('reading'); setIsPrimaryDropdownOpen(false); }}>📖 Reading</li>
+              <li className={cx('chip', t === 'mock' && 'on')} onClick={() => { setTool('mock'); setIsPrimaryDropdownOpen(false); }}>📝 Mock</li>
+              <li className={cx('chip', t === 'mistakes' && 'on')} onClick={() => { setTool('mistakes'); setIsPrimaryDropdownOpen(false); }}>⚠ Mistakes{mistakeCount > 0 ? ` ${mistakeCount}` : ''}</li>
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {/* Category chips (only for vocab/listen) – kept as chips for simplicity */}
+      {showCategoryChips && (
+        <div className="chips" style={{ justifyContent: 'center', marginBottom: 22 }}>
+          {VOCAB_CATS.map(c => (
+            <span key={c} className={cx('chip', quizCat === c && 'on')} onClick={() => setQuizCat(c)}>
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Render the selected tool */}
+      {t === 'quiz' ? (
+        <Quiz
+          key={'q-' + quizMode}
+          cp={cp}
+          mode={quizMode}
+          setMode={setQuizMode}
+          cat={quizCat}
+          setCat={setQuizCat}
+        />
+      ) : t === 'cards' ? (
+        <Flashcards cp={cp} deckId={deckId} />
+      ) : t === 'reading' ? (
+        <Reading cp={cp} />
+      ) : t === 'mock' ? (
+        <Mock cp={cp} />
+      ) : t === 'mistakes' ? (
+        <MistakeReview cp={cp} />
+      ) : (
+        <Review cp={cp} deckId={deckId} />
+      )}
+    </section>
+  );
+});
 /* ---------- sign-in (optional Google sync) ---------- */
 function GoogleBtn({onSignIn, label, full}){
   const [busy,setBusy]=useState(false);
@@ -3074,8 +3206,15 @@ unsub = cloud.onAuth(function(fu) {
 
     // Cache the photo offline
     if (fu.photoURL) {
-      fetchAndCachePhoto(fu.photoURL, fu.uid);
+  fetchAndCachePhoto(fu.photoURL, fu.uid).then(photoData => {
+    if (photoData) {
+      setUser(prev => ({
+        ...prev,
+        photoData
+      }));
     }
+  });
+}
   } else {
     lsDel('user_profile');
     setUser(null);
@@ -3102,9 +3241,16 @@ const signIn = () => {
         lsSet('user_profile', profile);
         setUser(profile);
 
-        if (fu.photoURL) {
-          fetchAndCachePhoto(fu.photoURL, fu.uid);
-        }
+      if (fu.photoURL) {
+  fetchAndCachePhoto(fu.photoURL, fu.uid).then(photoData => {
+    if (photoData) {
+      setUser(prev => ({
+        ...prev,
+        photoData
+      }));
+    }
+  });
+}
       });
     }
   } catch (e) {

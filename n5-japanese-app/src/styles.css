@@ -250,6 +250,100 @@ section{scroll-margin-top:84px}
   /* Your existing lvbtn padding/margin will work, but width:100% ensures they fill the menu */
 }
 
+/* ---- Custom dropdowns for Practice (right-aligned) ---- */
+.dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--ui);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.dropdown-toggle:hover {
+  border-color: var(--line-2);
+  background: var(--bg-2);
+}
+
+.dropdown-arrow {
+  font-size: 12px;
+  transition: transform 0.2s ease;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;                           /* Aligns to the right edge of the button */
+  min-width: 160px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
+  padding: 6px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: dropdownFadeIn 0.2s ease;
+}
+
+.dropdown-menu .chip {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 12px;
+  border-radius: 10px;
+  transition: background 0.15s ease, color 0.15s ease;
+  font-weight: 500;
+}
+
+.dropdown-menu .chip:hover {
+  background: var(--bg-2);
+  color: var(--fg);
+}
+
+.dropdown-menu .chip.on {
+  background: var(--accent-dim);
+  color: var(--fg);
+  border: none;
+  font-weight: 600;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 /* hero */
 .hero{padding-top:clamp(56px,11vw,120px);padding-bottom:clamp(36px,6vw,60px);position:relative}
 .hero .kicker{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--accent-2);
