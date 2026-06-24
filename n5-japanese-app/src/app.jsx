@@ -1319,7 +1319,7 @@ const KanaView = React.memo(function KanaView({nav}){
           <button className={cx(sys==='katakana'&&'on')} onClick={()=>setSys('katakana')}>カタカナ Katakana</button>
         </div>
       </div>
-      {nav && <div className="prac-cta"><span>Learned these? Lock them in.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','kana')}>✦ Practice kana →</button></div>}
+      {nav && <div className="prac-cta"><span>Learned these? Lock them in.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','kana')}>Practice kana</button></div>}
       <div className="kana-sub">Basic — gojūon</div><KanaGrid list={set.base}/>
       <div className="kana-sub">Dakuten &amp; Handakuten — voiced sounds</div><KanaGrid list={set.dakuten}/>
       <div className="kana-sub">Yōon — combination sounds</div><KanaGrid list={set.yoon}/>
@@ -1465,7 +1465,7 @@ const KanjiView = React.memo( function KanjiView({ nav }) {
             className="btn primary sm"
             onClick={() => nav('practice', 'quiz', 'kanji')}
           >
-            ✦ Practice kanji →
+            Practice kanji
           </button>
         </div>
       )}
@@ -1489,8 +1489,9 @@ const KanjiView = React.memo( function KanjiView({ nav }) {
         onClick={() => speak(displayReading(k.kun))}
         aria-label={`Kun reading: ${displayReading(k.kun)}`}
       >
-        <span className="kanji-card__badge">kun</span>
-        <span className="kanji-card__reading-text">{displayReading(k.kun)}</span>
+        <span>
+        {/* <span className="kanji-card__badge">kun</span> */}
+        <span className="kanji-card__reading-text">{displayReading(k.kun)}</span></span>
         <span className="kanji-card__speaker-icon">🔊</span>
       </button>
     )}
@@ -1501,8 +1502,9 @@ const KanjiView = React.memo( function KanjiView({ nav }) {
         onClick={() => speak(k.on)}
         aria-label={`On reading: ${k.on}`}
       >
-        <span className="kanji-card__badge">on</span>
-        <span className="kanji-card__reading-text">{k.on}</span>
+        <span>
+        {/* <span className="kanji-card__badge">on</span> */}
+        <span className="kanji-card__reading-text">{k.on}</span></span>
         <span className="kanji-card__speaker-icon">🔊</span>
       </button>
     )}
@@ -1663,19 +1665,20 @@ const VocabView = React.memo(function VocabView({ nav }) {
   };
 
   const toggleRow = (id) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
+  setExpandedRows(prev => {
+    // If this row is already open, close it.
+    // Otherwise, open this row and close any other open row.
+    return prev[id] ? {} : { [id]: true };
+  });
+};
 
   return (
     <section className="block wrap">
       <div className="shead">
         <div>
           <div className="ey">{VOCAB.length} words</div>
-          <h2>Vocabulary</h2>
-          <p>Filter by theme. Click any row to view its usage example in context.</p>
+          {/* <h2>Vocabulary</h2> */}
+          {/* <p>Filter by theme. Click any row to view its usage example in context.</p> */}
         </div>
         <input
           className="btn"
@@ -1690,7 +1693,7 @@ const VocabView = React.memo(function VocabView({ nav }) {
         <div className="prac-cta" >
           <span>Turn reading into recall — quiz yourself on these words.</span>
           <button className="btn primary sm" onClick={() => nav('practice', 'quiz', 'vocab')}>
-            ✦ Practice vocab →
+            Practice vocab
           </button>
         </div>
       )}
@@ -1707,8 +1710,9 @@ const VocabView = React.memo(function VocabView({ nav }) {
         <div className="vtable">
           <div className="vhead">
             <span className="vhead-control"></span>
-            <span>Japanese</span>
+            
             <span>Romaji</span>
+            <span>Vocab</span>
             <span>Meaning</span>
           </div>
 
@@ -1737,11 +1741,12 @@ const VocabView = React.memo(function VocabView({ nav }) {
                   <div className="vcol-control">
                     <span className="v-chevron-icon" aria-hidden="true" />
                   </div>
-                  <div className="jp">
+                 
+                  <div className="ro">{v.romaji}</div>
+                   <div className="jp">
                     {v.jp}
                     <small>{v.kana}</small>
                   </div>
-                  <div className="ro">{v.romaji}</div>
                   <div className="en">
                     <div className="en-wrap">
                       <span>{v.en}</span>
@@ -1759,8 +1764,8 @@ const VocabView = React.memo(function VocabView({ nav }) {
                         <div className="v-sentence-label">Sentence</div>
                         <div className="v-sentence-body">
                           <div className="v-sentence-text-group">
-                            <div className="v-sentence-jp">{v.sentence}</div>
-                            <div className="v-sentence-kana">{v.sentenceKana}</div>
+                            <div className="v-sentence-jp">{v.sentenceKana}</div>
+                            <div className="v-sentence-kana">{v.sentence}</div>
                             <div className="v-sentence-en">{v.sentenceEn}<SpeakBtn text={v.sentence} label="Example Sentence" /></div>
                           </div>
                         </div>
@@ -1902,7 +1907,7 @@ const GrammarView = React.memo(function GrammarView({nav}) {
     <section className="block wrap">
       <div ref={containerRef} style={{ scrollMarginTop: '84px' }}>
         <div className="shead"><div><div className="ey">{GRAMMAR.length} patterns</div><h2>Grammar</h2><p>The core building blocks of {LEVEL_META.label} sentences, each with a spoken example.</p></div></div>
-        {nav && <div className="prac-cta"><span>Ready to drill grammar? Fill-in-the-blank questions test the exact particles &amp; patterns below.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','grammar')}>✦ Practice grammar →</button></div>}
+        {nav && <div className="prac-cta"><span>Ready to drill grammar? Fill-in-the-blank questions test the exact particles &amp; patterns below.</span><button className="btn primary sm" onClick={()=>nav('practice','quiz','grammar')}>Practice grammar</button></div>}
         <div>
           {paginatedList.map((g,i)=>(
             <div className="gcard" key={i}>
@@ -2194,7 +2199,7 @@ function Flashcards({ cp, deckId }) {
 
               {(deckId === 'grammar') && <>
                 <div className="sentence-en">{card.back}</div>
-                <div className="back-readings">{card.sentenceJp}</div>
+                <div className="a">{card.sentenceJp}</div>
                 <div className="sentence-en">{card.sentenceKana}</div>
                 <div className="sentence-en">{card.sentenceEn}</div>
                 </>}
@@ -2574,7 +2579,7 @@ function Reading({cp}){
     try{ if(cp){ cp.recordAttempt('Reading', ok); if(!ok) cp.addMistake({section:'Reading', prompt:qq.q, sub:'', say:'', correct:qq.a, options:qq.opts, kind:'reading'}); } }catch(e){} };
   const hasWords = p.vocab && p.vocab.length>0;
   return (
-    <div className="quiz-wrap" style={{maxWidth:'640px'}}>
+    <div className="quiz-wrap" style={{maxWidth:'900px'}}>
       <div className="fc-bar">
         <span className="fc-count">Passage <b>{idx+1}</b> / {list.length}</span>
         <span className="r-tools">
@@ -2584,8 +2589,8 @@ function Reading({cp}){
           {hasWords && <button className={cx('swlink',showWords&&'on')} onClick={()=>setShowWords(s=>!s)}>Words</button>}
         </span>
       </div>
-      <div className="muted" style={{fontSize:'12px',margin:'0 0 12px'}}>Tap 🔊 to hear it — the line being read lights up · <b>Romaji</b> = sound · <b>English</b> = meaning · <b>Words</b> = key vocabulary.</div>
-      {list.length>1 && (
+      {/* <div className="muted" style={{fontSize:'12px',margin:'0 0 12px'}}>Tap 🔊 to hear it — the line being read lights up · <b>Romaji</b> = sound · <b>English</b> = meaning · <b>Words</b> = key vocabulary.</div> */}
+      {/* {list.length>1 && (
         <div className="rtiers">
           {['Easy','Medium','Exam-style'].map(function(tier){
             const items=[]; list.forEach(function(pp,k){ const n=splitSentences(pp.jp).length; const t=n<=3?'Easy':(n<=5?'Medium':'Exam-style'); if(t===tier) items.push(k); });
@@ -2593,7 +2598,7 @@ function Reading({cp}){
             return <div className="rtier" key={tier}><span className="rtier-lab">{tier}</span>{items.map(function(k){ return <button key={k} className={cx('rtchip', idx===k&&'on')} onClick={function(){ if(idx===k)return; stopAudio(); setActive(-1); setIdx(k); setPicked({}); setShowEn(false); setShowRo(false); setShowWords(false); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} }}>{k+1}</button>; })}</div>;
           })}
         </div>
-      )}
+      )} */}
       <div className="reading-card">
         <div className="rtitle"><span>{p.title}</span><span className={cx('rdiff', segs.length<=3?'easy':(segs.length<=5?'med':'hard'))}>{LEVEL_META.label} · {segs.length<=3?'Easy':(segs.length<=5?'Medium':'JLPT-style')}</span></div>
         <p className="rjp">{segs.map(function(s,i){ return <span key={i} className={cx('rseg',active===i&&'on')}>{s.t}</span>; })}</p>
@@ -2884,7 +2889,7 @@ const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: ini
   return (
     <section className="block wrap">
       {/* --- Centered container matching card width --- */}
-      <div className="study-wrap" style={{ maxWidth: '560px', margin: '0 auto' }}>
+      <div className={t === 'reading'? 'reading-wrap' : 'study-wrap'}>
         {/* Two dropdowns, right‑aligned within this container */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: 30, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {/* Secondary dropdown (decks or quiz modes) */}
