@@ -1473,75 +1473,51 @@ const KanjiView = React.memo( function KanjiView({ nav }) {
       <div className="kanji-grid-container" ref={gridRef} style={{ scrollMarginTop: '84px' }}>
         <div className="kanji-grid">
           {paginatedList.map((k, i) => (
-            <div className="kj" key={k.c + i}>
-              
-              {/* --- Header: Kanji, Meaning, Stroke Link --- */}
-              <div className="kj-header">
-                <div className="big">{k.c}</div>
-                <div className="mean">{k.mean}</div>
-                <a 
-                  href={`https://jisho.org/search/${k.c}%20%23kanji`} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="kj-stroke-link"
-                >
-                  ✍️
-                </a>
-              </div>
+         <div className="kanji-card" key={k.c + i}>
+  {/* Kanji (hero) */}
+  <div className="kanji-card__char">{k.c}</div>
 
-              {/* --- Readings Split Container --- */}
-              <div className="kj-readings">
-                
-                {/* Japanese Section (Kun) */}
-                {k.kun && k.kun !== '—' && k.kun !== '-' && (
-                  <div className="kj-reading-block kun">
-                    <div className="kj-reading-header">
-                      <span className="kj-reading-badge kun">訓</span>
-                      <span className="kj-reading-text">{displayReading(k.kun)}</span>
-                      {/* 🔥 Speaker for the individual reading */}
-                      <SpeakBtn text={displayReading(k.kun)} label="Reading" />
-                    </div>
-                    
-                    {k.kunSentence && k.kunSentence !== '—' && k.kunSentence !== '-' && (
-                      <div className="kj-sentence-row">
-                        <div className="kj-reading-sentence">
-                          <div className="kj-sentence-jp">{k.kunSentence}</div>
-                          <div className="kj-sentence-kana">{k.kunSentenceKana}</div>
-                          <div className="kj-sentence-en">{k.kunSentenceEn}</div>
-                        </div>
-                        {/* 🔥 Speaker for the full example sentence */}
-                        <SpeakBtn text={k.kunSentence} label="Example Sentence" />
-                      </div>
-                    )}
-                  </div>
-                )}
+  {/* Meaning */}
+  <div className="kanji-card__meaning">{k.mean}</div>
 
-                {/* Chinese Section (On) */}
-                {k.on && k.on !== '—' && k.on !== '-' && (
-                  <div className="kj-reading-block on">
-                    <div className="kj-reading-header">
-                      <span className="kj-reading-badge on">音</span>
-                      <span className="kj-reading-text">{k.on}</span>
-                      {/* 🔥 Speaker for the individual reading */}
-                      <SpeakBtn text={k.on} label="Reading" />
-                    </div>
+  {/* Readings side‑by‑side */}
+  <div className="kanji-card__readings">
+    {k.kun && k.kun !== '—' && k.kun !== '-' && (
+      <button
+        type="button"
+        className="kanji-card__reading-btn"
+        onClick={() => speak(displayReading(k.kun))}
+        aria-label={`Kun reading: ${displayReading(k.kun)}`}
+      >
+        <span className="kanji-card__badge">kun</span>
+        <span className="kanji-card__reading-text">{displayReading(k.kun)}</span>
+        <span className="kanji-card__speaker-icon">🔊</span>
+      </button>
+    )}
+    {k.on && k.on !== '—' && k.on !== '-' && (
+      <button
+        type="button"
+        className="kanji-card__reading-btn"
+        onClick={() => speak(k.on)}
+        aria-label={`On reading: ${k.on}`}
+      >
+        <span className="kanji-card__badge">on</span>
+        <span className="kanji-card__reading-text">{k.on}</span>
+        <span className="kanji-card__speaker-icon">🔊</span>
+      </button>
+    )}
+  </div>
 
-                    {k.onSentence && k.onSentence !== '—' && k.onSentence !== '-' && (
-                      <div className="kj-sentence-row">
-                        <div className="kj-reading-sentence">
-                          <div className="kj-sentence-jp">{k.onSentence}</div>
-                          <div className="kj-sentence-kana">{k.onSentenceKana}</div>
-                          <div className="kj-sentence-en">{k.onSentenceEn}</div>
-                        </div>
-                        {/* 🔥 Speaker for the full example sentence */}
-                        <SpeakBtn text={k.onSentence} label="Example Sentence" />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-              </div>
-            </div>
+  {/* Stroke order */}
+  <a
+    href={`https://jisho.org/search/${k.c}%20%23kanji`}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="kanji-card__stroke"
+  >
+   Stroke order
+  </a>
+</div>
           ))}
         </div>
       </div>

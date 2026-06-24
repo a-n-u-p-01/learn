@@ -539,8 +539,7 @@ section{scroll-margin-top:84px}
   color:var(--faint);
   line-height:1.7;
 }
-
-/* ---------- kanji ---------- */
+/* ---------- Kanji Grid ---------- */
 .kanji-grid-container {
   width: 100%;
   display: flex;
@@ -550,153 +549,128 @@ section{scroll-margin-top:84px}
 
 .kanji-grid {
   display: grid;
-  /* Fixed column tracks so cards always maintain identical widths */
-  grid-template-columns: repeat(auto-fill, 320px); 
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
   width: 100%;
 }
 
-/* --- Premium Split Kanji Card Base --- */
-.kj {
-  box-sizing: border-box;
-  width: 320px;
-  max-width: 320px;
-  min-width: 320px;
-  background: var(--bg-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 20px;
-  transition: border-color 0.2s ease, transform 0.2s ease;
+/* ---------- Card (transparent, light border) ---------- */
+.kanji-card {
   display: flex;
   flex-direction: column;
-  gap: 14px; /* Separates the header and the readings cleanly */
+  align-items: center;
+  text-align: center;
+  padding: 32px 20px 24px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  transition: border-color 0.2s ease, transform 0.2s ease;
 }
-.kj:hover {
-  background: var(--bg-2);
+
+.kanji-card:hover {
   border-color: var(--line-2);
   transform: translateY(-2px);
 }
 
-/* --- Header Area (Centered) --- */
-.kj-header {
-  text-align: center;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
-}
-.kj .big {
+/* ---------- Hero Kanji ---------- */
+.kanji-card__char {
   font-family: var(--jp);
-  font-size: 60px;
+  font-size: clamp(64px, 20vw, 88px);
+  font-weight: 500;
   line-height: 1;
-  font-weight: 500;
   color: var(--fg);
-  text-align: center;
-  margin-bottom: 4px;
-}
-.kj .mean {
-  text-align: center;
-  font-weight: 700;
-  font-size: 18px;
-  color: var(--fg);
-  margin-bottom: 8px;
-  text-transform: capitalize;
-}
-.kj-stroke-link {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-.kj-stroke-link:hover {
-  color: var(--accent-2);
 }
 
-/* --- Readings Container (Split Blocks) --- */
-.kj-readings {
+/* ---------- Meaning (quiet) ---------- */
+.kanji-card__meaning {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+/* ---------- Readings container (horizontal, centered) ---------- */
+.kanji-card__readings {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 16px;
+  width: 100%;
 }
-.kj-reading-block {
-  flex: 1 1 280px; /* On mobile, 280px wraps -> 100% width. On desktop, 50% width. */
-  background: var(--bg-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  
-  /* 🔥 Visual identity: Colored left border matching the badge */
-  border-left: 3px solid var(--faint); 
-  transition: border-color 0.2s ease;
-}
-.kj-reading-block.kun { border-left-color: #818cf8; }
-.kj-reading-block.on  { border-left-color: #22d3ee; }
 
-/* --- Individual Reading Row --- */
-.kj-reading-header {
+/* ---------- Each reading button (plain, no visual border) ---------- */
+.kanji-card__reading-btn {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: space-between; /* 🔥 Pushes speaker to far right */
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  /* make the whole area tappable on mobile */
+  min-height: 32px;
 }
-.kj-reading-badge {
-  font-size: 10px;
-  font-weight: 800;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  flex-shrink: 0;
-}
-.kj-reading-badge.kun { color: #818cf8; border: 1px solid rgba(129, 140, 248, 0.2); }
-.kj-reading-badge.on  { color: #22d3ee; border: 1px solid rgba(34, 211, 238, 0.2); }
 
-.kj-reading-text {
-  font-family: var(--jp);
-  font-size: 18px;
+.kanji-card__reading-btn:hover {
+  opacity: 0.8;
+}
+
+/* ---------- Badge (kun / on) ---------- */
+.kanji-card__badge {
+  font-size: 0.6rem;
   font-weight: 600;
-  color: var(--fg);
-  flex: 1; /* Takes up the middle space */
-}
-
-/* --- Sentence Row --- */
-.kj-sentence-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 4px;
-}
-.kj-reading-sentence {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-.kj-sentence-jp {
-  font-family: var(--jp);
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--fg);
-  line-height: 1.4;
-}
-.kj-sentence-kana {
-  font-family: var(--jp);
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.4;
-}
-.kj-sentence-en {
-  font-size: 12px;
   color: var(--faint);
-  margin-top: 4px;
-  opacity: 0.6; /* 🔥 Fades out English to force eye on Japanese first */
-  line-height: 1.4;
+  text-transform: lowercase;
+  align-self: center;
 }
 
+/* ---------- Reading text (small, dim) ---------- */
+.kanji-card__reading-text {
+  font-family: var(--jp);
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+/* ---------- Stroke order (faint footer) ---------- */
+.kanji-card__stroke {
+  margin-top: 18px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--faint);
+  text-decoration: none;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.kanji-card__stroke:hover {
+  opacity: 1;
+}
+
+/* Mobile single column */
+@media (max-width: 760px) {
+  .kanji-grid {
+    grid-template-columns: 1fr;
+  }
+  .kanji-card {
+    width: 100%;
+  }
+}
+/* --- Speaker icon (extremely subtle) --- */
+.kanji-card__speaker-icon {
+  font-size: 0.5rem;
+  color: var(--faint);
+  margin-left: 4px;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.kanji-card__reading-btn:hover .kanji-card__speaker-icon {
+  opacity: 0.8;
+}
 /* ---------- readings ---------- */
 .reading-block{
   margin-top:12px;
@@ -1202,9 +1176,9 @@ justify-content: space-between;
     gap: 4px 16px;
     padding: 14px 16px;
   }
-  .v-chevron-icon {
+  /* .v-chevron-icon {
     display: none;
-  }
+  } */
 
   /* ---------- Row 1: Vocab (left) + Chevron (right) ---------- */
   .vrow .jp {
@@ -1576,7 +1550,7 @@ justify-content: space-between;
 }
 
 /* ---- speaker buttons ---- */
-.spk{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;border:1px solid var(--line);
+.spk{ margin-left: auto;display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;border:1px solid var(--line);
   background:var(--bg-2);color:var(--muted);cursor:pointer;font-size:13px;transition:.15s;flex-shrink:0;line-height:1;padding:0}
 .spk:hover{color:#fff;border-color:rgba(255,93,82,.5);background:var(--accent-dim)}
 .spk:active{transform:scale(.9)}
