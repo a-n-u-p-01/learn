@@ -345,7 +345,7 @@ section{scroll-margin-top:84px}
 }
 
 /* hero */
-.hero{padding-top:clamp(56px,11vw,120px);padding-bottom:clamp(36px,6vw,60px);position:relative}
+.hero{padding-top:clamp(56px,2vw,120px);padding-bottom:clamp(36px,6vw,60px);position:relative}
 .hero .kicker{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--accent-2);
   background:var(--accent-dim);border:1px solid rgba(255,93,82,.25);padding:6px 13px;border-radius:999px;font-weight:600}
 .hero h1{font-size:clamp(38px,7vw,72px);line-height:1.04;font-weight:800;letter-spacing:-.02em;margin:22px 0 0}
@@ -377,7 +377,7 @@ section{scroll-margin-top:84px}
 .shead h2{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.02em;margin-top:8px}
 .shead p{color:var(--muted);font-size:15px;margin-top:8px;max-width:560px}
 .divider{height:1px;background:var(--line);margin:0}
-.block{padding-top:clamp(54px,8vw,96px);padding-bottom:clamp(54px,8vw,96px)}
+.block{padding-top:clamp(20px,2vw,96px);padding-bottom:clamp(54px,8vw,96px)}
 
 /* "practice this" call-to-action on reference pages */
 .prac-cta{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;

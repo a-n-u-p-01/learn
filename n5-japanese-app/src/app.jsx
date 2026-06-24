@@ -2848,9 +2848,7 @@ const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: ini
   const [isPrimaryDropdownOpen, setIsPrimaryDropdownOpen] = useState(false);
   const [isSecondaryDropdownOpen, setIsSecondaryDropdownOpen] = useState(false);
 
-  // Deck state (used by Review & Flashcards)
   const [deckId, setDeckId] = useState(() => (DECKS[0] && DECKS[0][0]) || 'vocab');
-  // Quiz state
   const [quizMode, setQuizMode] = useState(initialQuizMode || (QUIZZES[0] && QUIZZES[0][0]) || 'vocab');
   const [quizCat, setQuizCat] = useState('All');
 
@@ -2874,7 +2872,6 @@ const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: ini
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Secondary options: decks (review/cards) or quiz modes (quiz)
   const secondaryOptions = useMemo(() => {
     if (t === 'review' || t === 'cards') {
       return { type: 'deck', items: DECKS, current: deckId, setter: setDeckId };
@@ -2885,113 +2882,115 @@ const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: ini
     return null;
   }, [t, deckId, quizMode]);
 
-  // Show category chips only for vocab/listen quiz
   const showCategoryChips = t === 'quiz' && (quizMode === 'vocab' || quizMode === 'listen');
 
   return (
     <section className="block wrap">
-      {/* --- Two dropdowns: right‑aligned, primary on far right --- */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: 30, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        {/* Secondary dropdown (decks or quiz modes) */}
-        {secondaryOptions && (
-          <div className="dropdown-wrapper" ref={secondaryWrapperRef}>
-            <button className="dropdown-toggle" onClick={() => setIsSecondaryDropdownOpen(prev => !prev)}>
+      {/* --- Centered container matching card width --- */}
+      <div className="study-wrap" style={{ maxWidth: '560px', margin: '0 auto' }}>
+        {/* Two dropdowns, right‑aligned within this container */}
+        <div style={{ display: 'flex', gap: '12px', marginBottom: 30, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {/* Secondary dropdown (decks or quiz modes) */}
+          {secondaryOptions && (
+            <div className="dropdown-wrapper" ref={secondaryWrapperRef}>
+              <button className="dropdown-toggle" onClick={() => setIsSecondaryDropdownOpen(prev => !prev)}>
+                <span>
+                  {secondaryOptions.type === 'deck'
+                    ? DECKS.find(([id]) => id === secondaryOptions.current)?.[1] || 'Select Deck'
+                    : QUIZZES.find(([id]) => id === secondaryOptions.current)?.[1] || 'Select Mode'}
+                </span>
+                <span className={cx('dropdown-arrow', isSecondaryDropdownOpen && 'open')}>▾</span>
+              </button>
+              {isSecondaryDropdownOpen && (
+                <ul className="dropdown-menu">
+                  {secondaryOptions.items.map((item) => {
+                    const id = item[0] !== undefined ? item[0] : item.id;
+                    const label = item[1] !== undefined ? item[1] : item.label;
+                    const isActive = secondaryOptions.type === 'deck'
+                      ? id === deckId
+                      : id === quizMode;
+                    return (
+                      <li
+                        key={id}
+                        className={cx('chip', isActive && 'on')}
+                        onClick={() => {
+                          if (secondaryOptions.type === 'deck') {
+                            setDeckId(id);
+                          } else {
+                            setQuizMode(id);
+                            setQuizCat('All');
+                          }
+                          setIsSecondaryDropdownOpen(false);
+                        }}
+                      >
+                        {label}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* Primary tool dropdown (far right) */}
+          <div className="dropdown-wrapper" ref={primaryWrapperRef}>
+            <button className="dropdown-toggle" onClick={() => setIsPrimaryDropdownOpen(prev => !prev)}>
               <span>
-                {secondaryOptions.type === 'deck'
-                  ? DECKS.find(([id]) => id === secondaryOptions.current)?.[1] || 'Select Deck'
-                  : QUIZZES.find(([id]) => id === secondaryOptions.current)?.[1] || 'Select Mode'}
+                {t === 'review' && '🧠 Review'}
+                {t === 'cards' && '🃏 Browse'}
+                {t === 'quiz' && '✦ Quiz'}
+                {t === 'reading' && '📖 Reading'}
+                {t === 'mock' && '📝 Mock'}
+                {t === 'mistakes' && `⚠ Mistakes${mistakeCount > 0 ? ` ${mistakeCount}` : ''}`}
               </span>
-              <span className={cx('dropdown-arrow', isSecondaryDropdownOpen && 'open')}>▾</span>
+              <span className={cx('dropdown-arrow', isPrimaryDropdownOpen && 'open')}>▾</span>
             </button>
-            {isSecondaryDropdownOpen && (
+            {isPrimaryDropdownOpen && (
               <ul className="dropdown-menu">
-                {secondaryOptions.items.map((item) => {
-                  const id = item[0] !== undefined ? item[0] : item.id;
-                  const label = item[1] !== undefined ? item[1] : item.label;
-                  const isActive = secondaryOptions.type === 'deck'
-                    ? id === deckId
-                    : id === quizMode;
-                  return (
-                    <li
-                      key={id}
-                      className={cx('chip', isActive && 'on')}
-                      onClick={() => {
-                        if (secondaryOptions.type === 'deck') {
-                          setDeckId(id);
-                        } else {
-                          setQuizMode(id);
-                          setQuizCat('All'); // reset category when switching mode
-                        }
-                        setIsSecondaryDropdownOpen(false);
-                      }}
-                    >
-                      {label}
-                    </li>
-                  );
-                })}
+                <li className={cx('chip', t === 'review' && 'on')} onClick={() => { setTool('review'); setIsPrimaryDropdownOpen(false); }}>🧠 Review</li>
+                <li className={cx('chip', t === 'cards' && 'on')} onClick={() => { setTool('cards'); setIsPrimaryDropdownOpen(false); }}>🃏 Browse</li>
+                <li className={cx('chip', t === 'quiz' && 'on')} onClick={() => { setTool('quiz'); setIsPrimaryDropdownOpen(false); }}>✦ Quiz</li>
+                <li className={cx('chip', t === 'reading' && 'on')} onClick={() => { setTool('reading'); setIsPrimaryDropdownOpen(false); }}>📖 Reading</li>
+                <li className={cx('chip', t === 'mock' && 'on')} onClick={() => { setTool('mock'); setIsPrimaryDropdownOpen(false); }}>📝 Mock</li>
+                <li className={cx('chip', t === 'mistakes' && 'on')} onClick={() => { setTool('mistakes'); setIsPrimaryDropdownOpen(false); }}>⚠ Mistakes{mistakeCount > 0 ? ` ${mistakeCount}` : ''}</li>
               </ul>
             )}
           </div>
+        </div>
+
+        {/* Category chips (only for vocab/listen) – also inside the container */}
+        {showCategoryChips && (
+          <div className="chips" style={{ justifyContent: 'center', marginBottom: 22 }}>
+            {VOCAB_CATS.map(c => (
+              <span key={c} className={cx('chip', quizCat === c && 'on')} onClick={() => setQuizCat(c)}>
+                {c}
+              </span>
+            ))}
+          </div>
         )}
 
-        {/* Primary tool dropdown (far right) */}
-        <div className="dropdown-wrapper" ref={primaryWrapperRef}>
-          <button className="dropdown-toggle" onClick={() => setIsPrimaryDropdownOpen(prev => !prev)}>
-            <span>
-              {t === 'review' && '🧠 Review'}
-              {t === 'cards' && '🃏 Browse'}
-              {t === 'quiz' && '✦ Quiz'}
-              {t === 'reading' && '📖 Reading'}
-              {t === 'mock' && '📝 Mock'}
-              {t === 'mistakes' && `⚠ Mistakes${mistakeCount > 0 ? ` ${mistakeCount}` : ''}`}
-            </span>
-            <span className={cx('dropdown-arrow', isPrimaryDropdownOpen && 'open')}>▾</span>
-          </button>
-          {isPrimaryDropdownOpen && (
-            <ul className="dropdown-menu">
-              <li className={cx('chip', t === 'review' && 'on')} onClick={() => { setTool('review'); setIsPrimaryDropdownOpen(false); }}>🧠 Review</li>
-              <li className={cx('chip', t === 'cards' && 'on')} onClick={() => { setTool('cards'); setIsPrimaryDropdownOpen(false); }}>🃏 Browse</li>
-              <li className={cx('chip', t === 'quiz' && 'on')} onClick={() => { setTool('quiz'); setIsPrimaryDropdownOpen(false); }}>✦ Quiz</li>
-              <li className={cx('chip', t === 'reading' && 'on')} onClick={() => { setTool('reading'); setIsPrimaryDropdownOpen(false); }}>📖 Reading</li>
-              <li className={cx('chip', t === 'mock' && 'on')} onClick={() => { setTool('mock'); setIsPrimaryDropdownOpen(false); }}>📝 Mock</li>
-              <li className={cx('chip', t === 'mistakes' && 'on')} onClick={() => { setTool('mistakes'); setIsPrimaryDropdownOpen(false); }}>⚠ Mistakes{mistakeCount > 0 ? ` ${mistakeCount}` : ''}</li>
-            </ul>
-          )}
-        </div>
+        {/* Render the selected tool – it will also be inside .study-wrap */}
+        {t === 'quiz' ? (
+          <Quiz
+            key={'q-' + quizMode}
+            cp={cp}
+            mode={quizMode}
+            setMode={setQuizMode}
+            cat={quizCat}
+            setCat={setQuizCat}
+          />
+        ) : t === 'cards' ? (
+          <Flashcards cp={cp} deckId={deckId} />
+        ) : t === 'reading' ? (
+          <Reading cp={cp} />
+        ) : t === 'mock' ? (
+          <Mock cp={cp} />
+        ) : t === 'mistakes' ? (
+          <MistakeReview cp={cp} />
+        ) : (
+          <Review cp={cp} deckId={deckId} />
+        )}
       </div>
-
-      {/* Category chips (only for vocab/listen) – kept as chips for simplicity */}
-      {showCategoryChips && (
-        <div className="chips" style={{ justifyContent: 'center', marginBottom: 22 }}>
-          {VOCAB_CATS.map(c => (
-            <span key={c} className={cx('chip', quizCat === c && 'on')} onClick={() => setQuizCat(c)}>
-              {c}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Render the selected tool */}
-      {t === 'quiz' ? (
-        <Quiz
-          key={'q-' + quizMode}
-          cp={cp}
-          mode={quizMode}
-          setMode={setQuizMode}
-          cat={quizCat}
-          setCat={setQuizCat}
-        />
-      ) : t === 'cards' ? (
-        <Flashcards cp={cp} deckId={deckId} />
-      ) : t === 'reading' ? (
-        <Reading cp={cp} />
-      ) : t === 'mock' ? (
-        <Mock cp={cp} />
-      ) : t === 'mistakes' ? (
-        <MistakeReview cp={cp} />
-      ) : (
-        <Review cp={cp} deckId={deckId} />
-      )}
     </section>
   );
 });
