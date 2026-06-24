@@ -1499,9 +1499,17 @@ justify-content: space-between;
 .fc-back .sub2{font-size:14px;color:var(--muted)}
 .fc-controls{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:20px}
 .icon-btn{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;cursor:pointer;
-  background:var(--bg-2);border:1px solid var(--line);color:var(--fg);font-size:18px;transition:.15s}
+  background:var(--bg-2);border:1px solid var(--line);color:var(--fg);font-size:14px;transition:.15s}
 .icon-btn:hover{background:var(--bg-3);border-color:var(--line-2)}
 .known-row{display:flex;gap:10px;justify-content:center;margin-top:14px}
+
+.fc-front .kana {
+  font-family: var(--jp);
+  font-size: clamp(14px, 2.5vw, 22px);   /* very small */
+  font-weight: 300;                       /* light weight */
+  color: var(--faint);                    /* subtle grey */
+  opacity: 0.6;                           /* faded */
+}
 
 /* quiz */
 .quiz-wrap{max-width:580px;margin:0 auto}

@@ -169,7 +169,7 @@ function mergeDoc(a,b){
 
 /* ---------- spaced repetition (SM-2 lite) ---------- */
 const DAY_MS = 86400000;
-const NEW_PER_DAY = 10;
+const NEW_PER_DAY = 100;
 const REVIEW_BUFFER_DAYS = 10; // pure-review run-up before the exam (new material finishes by exam − this)
 const MIN_NEW_PER_DAY = 10;    // never schedule a slower pace than this — a far-off date means you finish early, not crawl
 function srsUpdate(s, grade){
@@ -2074,7 +2074,9 @@ function buildDeck(id) {
         sentenceEn,
         tag: 'Kanji',
         fc: 'jp',
-        say: kanjiReadingText(k)
+        say: kanjiReadingText(k),
+        kun: k.kun && k.kun !== '—' ? displayReading(k.kun) : null,
+        on: k.on && k.on !== '—' ? k.on : null,
       };
     });
   }
@@ -2087,7 +2089,7 @@ function buildDeck(id) {
         back: g.meaning,
         readings: null,
         sentenceJp: ex ? ex.jp : null,
-        sentenceKana: ex ? ex.romaji : null,
+        sentenceKana: ex ? ex.kana : null,
         sentenceEn: ex ? ex.en : null,
         tag: 'Grammar',
         fc: 'jpw',
@@ -2174,12 +2176,12 @@ function Flashcards({ cp, deckId }) {
 
       {flip && hasSentence && (
         <div className="sentence-toolbar">
-          <button
+          {/* <button
             className={cx('toolbar-btn', showSentence && 'on')}
             onClick={(e) => { e.stopPropagation(); setShowSentence(s => !s); }}
           >
             {showSentence ? '📖 Hide sentence' : '📖 Show sentence'}
-          </button>
+          </button> */}
           {showSentence && (
             <button
               className="toolbar-btn speak-sentence"
@@ -2197,20 +2199,29 @@ function Flashcards({ cp, deckId }) {
           <div className="fc-face fc-front">
             <span className="tag">{card.tag}</span>
             <span className={card.fc === 'jp' ? 'q' : 'qs'}>{card.front}</span>
+            {deckId === 'vocab' && <span className="kana">{card.say}</span>}
+             {deckId === 'grammar' && <span className='kana'>Say a sentence using this.</span>}
             <span className="hint">tap to reveal</span>
           </div>
           <div className="fc-face fc-back">
             <span className="tag">{card.tag}</span>
-            <div className="back-meaning">{card.back}</div>
-            {card.readings && <div className="back-readings">{card.readings}</div>}
+            {deckId !== 'grammar' && <div className="back-meaning">{card.back}</div>}
+            {deckId !== 'grammar' &&card.readings && <div className="back-readings">{card.readings}</div>}
 
-            {showSentence && card.sentenceJp && (
+            {deckId !== 'grammar' && showSentence && card.sentenceJp && (
               <div className="back-sentence">
                 <div className="sentence-jp">{card.sentenceJp}</div>
                 {card.sentenceKana && <div className="sentence-kana">{card.sentenceKana}</div>}
                 {card.sentenceEn && <div className="sentence-en">{card.sentenceEn}</div>}
               </div>
             )}
+
+              {(deckId === 'grammar') && <>
+                <div className="sentence-en">{card.back}</div>
+                <div className="back-readings">{card.sentenceJp}</div>
+                <div className="sentence-en">{card.sentenceKana}</div>
+                <div className="sentence-en">{card.sentenceEn}</div>
+                </>}
 
             <span className="hint">tap to flip back</span>
           </div>
@@ -2219,8 +2230,10 @@ function Flashcards({ cp, deckId }) {
 
       <div className="fc-controls">
         <button className="icon-btn" onClick={() => go(-1)} title="Previous (←)">‹</button>
-        <button className="btn" onClick={() => setFlip(f => !f)}>Flip</button>
-        {speechSupported && <button className="icon-btn" onClick={() => speak(card.say)} title="Listen">🔊</button>}
+        {/* <button className="btn" onClick={() => setFlip(f => !f)}>Flip</button> */}
+        {/* {speechSupported && <button className="icon-btn" onClick={() => speak(card.say)} title="Listen">🔊</button>} */}
+          {speechSupported && <button className="icon-btn" onClick={() => speak(card.say)} aria-label="Listen">{deckId == 'kanji' ? 'Kun' : '🔊'}</button>}
+          {speechSupported&& deckId === 'kanji' && <button className="icon-btn" onClick={() => speak(card.on)} aria-label="Listen">On</button>}
         <button className="icon-btn" onClick={reshuffle} title="Shuffle">⇄</button>
         <button className="icon-btn" onClick={() => go(1)} title="Next (→)">›</button>
       </div>
@@ -2381,15 +2394,23 @@ function CaughtUp({srsDeck, reviewed}){
   );
 }
 function Review({ cp, deckId }) {
+  // Pre-compute today for early use
+  const today = dayStr();
+
+  // Restore reviewed count from today's progress, instead of always 0
+  const dailyReviewCount = (cp.prog.daily || {})[today]?.[deckId + '_reviewed'] || 0;
+  const [reviewed, setReviewed] = useState(dailyReviewCount);
+
   const [queue, setQueue] = useState(() => buildQueue(buildDeck(deckId), (cp.prog.srs || {})[deckId] || {}));
   const [reveal, setReveal] = useState(false);
-  const [reviewed, setReviewed] = useState(0);
   const [showSentence, setShowSentence] = useState(false);
 
   useEffect(() => {
     setQueue(buildQueue(buildDeck(deckId), (cp.prog.srs || {})[deckId] || {}));
     setReveal(false);
-    setReviewed(0);
+    // Reset reviewed to daily count for the newly selected deck
+    const newDaily = (cp.prog.daily || {})[dayStr()]?.[deckId + '_reviewed'] || 0;
+    setReviewed(newDaily);
     setShowSentence(false);
   }, [deckId]);
 
@@ -2397,8 +2418,9 @@ function Review({ cp, deckId }) {
   const srsDeck = (cp.prog.srs || {})[deckId] || {};
   const cur = card ? srsDeck[card.front] : null;
   const isNew = card && !srsDeck[card.front];
-  const today = dayStr();
-  const deckReviewedToday = (cp.prog.daily || {})[today]?.[deckId + '_reviewed'] || 0;
+
+  // The rest of the component stays exactly the same
+  const deckReviewedToday = dailyReviewCount;
 
   const dueCountInDeck = (deckSrs) => {
     const now = Date.now();
@@ -2456,8 +2478,6 @@ function Review({ cp, deckId }) {
 
   return (
     <div className="study-wrap">
-      {/* No chips – deck selection is in parent */}
-
       {card ? (
         <React.Fragment>
           <div className="fc-bar" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
@@ -2472,14 +2492,9 @@ function Review({ cp, deckId }) {
             <i style={{ width: ((reviewed + queue.length) ? Math.round(reviewed / (reviewed + queue.length) * 100) : 0) + '%' }} />
           </div>
 
+          {/* ... (flashcard and controls unchanged) ... */}
           {reveal && hasSentence && (
             <div className="sentence-toolbar">
-              <button
-                className={cx('toolbar-btn', showSentence && 'on')}
-                onClick={(e) => { e.stopPropagation(); setShowSentence(s => !s); }}
-              >
-                {showSentence ? '📖 Hide sentence' : '📖 Show sentence'}
-              </button>
               {showSentence && (
                 <button
                   className="toolbar-btn speak-sentence"
@@ -2497,21 +2512,27 @@ function Review({ cp, deckId }) {
               <div className="fc-face fc-front">
                 <span className="tag">{card.tag}{isNew ? ' · NEW' : ''}</span>
                 <span className={card.fc === 'jp' ? 'q' : 'qs'}>{card.front}</span>
+                {deckId === 'vocab' && <span className='kana'>{card.say}</span>}
+                {deckId === 'grammar' && <span className='kana'>Say a sentence using this.</span>}
                 <span className="hint">tap to reveal</span>
               </div>
               <div className="fc-face fc-back">
                 <span className="tag">{card.tag}</span>
-                <div className="back-meaning">{card.back}</div>
-                {card.readings && <div className="back-readings">{card.readings}</div>}
-
-                {showSentence && card.sentenceJp && (
+                {!(deckId === 'grammar') && <div className="back-meaning">{card.back}</div>}
+                {!(deckId === 'grammar') && card.readings && <div className="back-readings">{card.readings}</div>}
+                {!(deckId === 'grammar') && showSentence && card.sentenceJp && (
                   <div className="back-sentence">
                     <div className="sentence-jp">{card.sentenceJp}</div>
                     {card.sentenceKana && <div className="sentence-kana">{card.sentenceKana}</div>}
                     {card.sentenceEn && <div className="sentence-en">{card.sentenceEn}</div>}
                   </div>
                 )}
-
+                {(deckId === 'grammar') && <>
+                  <div className="sentence-en">{card.back}</div>
+                  <div className="back-readings">{card.sentenceJp}</div>
+                  <div className="sentence-en">{card.sentenceKana}</div>
+                  <div className="sentence-en">{card.sentenceEn}</div>
+                </>}
                 <span className="hint">tap to flip back</span>
               </div>
             </div>
@@ -2519,8 +2540,8 @@ function Review({ cp, deckId }) {
 
           {!reveal ? (
             <div className="fc-controls" style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '16px' }}>
-              <button className="icon-btn" onClick={() => setReveal(true)}>Flip</button>
-              {speechSupported && <button className="icon-btn" onClick={() => speak(card.say)} aria-label="Listen">🔊</button>}
+              {speechSupported && <button className="icon-btn" onClick={() => speak(card.say)} aria-label="Listen">{deckId == 'kanji' ? 'Kun' : '🔊'}</button>}
+              {speechSupported && deckId === 'kanji' && <button className="icon-btn" onClick={() => speak(card.on)} aria-label="Listen">On</button>}
             </div>
           ) : (
             <div className="grades">
