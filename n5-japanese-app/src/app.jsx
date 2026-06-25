@@ -3406,6 +3406,11 @@ const [user, setUser] = useState(() => {
     if (saved) return saved;
     return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   });
+    const firstLoad = !sessionStorage.getItem('app_loaded');
+  if (firstLoad && window.location.hash && window.location.hash !== '#/') {
+    window.location.hash = '#/';
+    sessionStorage.setItem('app_loaded', 'true');
+  }
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
