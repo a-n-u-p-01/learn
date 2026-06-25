@@ -3331,9 +3331,6 @@ return (
         alignItems: "center",
         width: "100%",
       }}
-      onClick={() => {
-        closeSidebar();
-      }}
     >
       <GoogleBtn onSignIn={onSignIn} />
     </div>
