@@ -3124,7 +3124,7 @@ function fetchAndCachePhoto(photoURL, uid) {
 }
 
 /* ---------- app shell ---------- */
-function App({user,onSignIn,onSignOut,theme,setTheme}){
+function App({user,onSignIn,onSignOut,theme,setTheme,isLoggingOut }){
   const [route,navigate] = useHashRoute();
   const view = route.view;
   const [level,setLevelState] = useState('n5');
@@ -3312,30 +3312,36 @@ return (
   </div>
 
   {/* Logout / Sign-in */}
-  {user ? (
-    <button className="sidebar-action-btn danger" onClick={() => { onSignOut(); closeSidebar(); }}>
-      log out {'->'}
-    </button>
-  ) : (
-    <>
-     <div 
-      style={{
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    width: "100%",
-  }}
-  onClick={() => {
-    closeSidebar();
-  }}
+ {user ? (
+  <button
+  className="sidebar-action-btn danger"
+  onClick={onSignOut}
+  disabled={isLoggingOut}
+  style={isLoggingOut ? { opacity: 0.7, cursor: 'default' } : {}}
 >
-  <GoogleBtn onSignIn={onSignIn} />
-</div>
-      <div className="sidebar-guest-note">
-        Sign in to save progress across devices.
-      </div>
-    </>
-  )}
+  {isLoggingOut ? '⟳ Logging out…' : 'log out →'}
+</button>
+) : (
+  // sign-in block — unchanged
+  <>
+    <div 
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        width: "100%",
+      }}
+      onClick={() => {
+        closeSidebar();
+      }}
+    >
+      <GoogleBtn onSignIn={onSignIn} />
+    </div>
+    <div className="sidebar-guest-note">
+      Sign in to save progress across devices.
+    </div>
+  </>
+)}
 </div>
       </div>
     </aside>
@@ -3381,6 +3387,7 @@ class ErrorBoundary extends React.Component{
 }
 
 function RootApp() {
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   // Immediately load user profile from localStorage (no waiting for Firebase)
 const [user, setUser] = useState(() => {
   const profile = lsGet('user_profile');
@@ -3490,19 +3497,23 @@ if (fu.photoURL) {
 };
 
 const signOut = () => {
-  try {
-    cloud.signOut();
-  } catch (e) {}
+  setIsLoggingOut(true);
 
-  if (user && user.uid) {
-    lsDel(userKey(user.uid)); // clear progress data
-  }
+  // Short delay so the user sees the loading state
+  setTimeout(() => {
+    try {
+      cloud.signOut();
+    } catch (e) {}
 
-  lsDel('user_profile'); // clear profile
-  setUser(null);
+    if (user && user.uid) {
+      lsDel(userKey(user.uid));
+    }
 
-  // Redirect to landing page
-  window.location.hash = '#/';
+    lsDel('user_profile');
+    setUser(null);
+    setIsLoggingOut(false);
+    window.location.hash = '#/';
+  }, 500);
 };
 
   // Render app immediately – no splash screen
@@ -3514,6 +3525,7 @@ const signOut = () => {
       onSignOut={signOut}
       theme={theme}
       setTheme={setTheme}
+      isLoggingOut={isLoggingOut}
     />
   );
 }
