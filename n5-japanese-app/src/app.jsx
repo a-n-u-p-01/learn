@@ -1001,8 +1001,7 @@ function WeakAreas({ prog, setView }) {
                 <div className="pbar">
                   <i style={{
                     width: Math.max(r[1], 2) + '%',
-                    background: r[1] < 60 ? 'linear-gradient(90deg,#e0463b,#ff5d52)' : undefined
-                  }} />
+background: r[1] < 60 ? 'linear-gradient(90deg,var(--accent),var(--accent-2))' : undefined                  }} />
                 </div>
               </div>
             );
