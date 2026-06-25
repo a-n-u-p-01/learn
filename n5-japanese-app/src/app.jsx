@@ -3303,7 +3303,7 @@ return (
       <div className="name">{user ? user.name : 'Guest'}</div>
       <div className={cx('status', cp.connectionStatus === 'synced' ? 'online' : cp.connectionStatus === 'syncing' ? 'syncing' : 'offline')}>
         {user
-          ? (cp.connectionStatus === 'synced' ? '✓ Synced'
+          ? (cp.connectionStatus === 'synced' ? 'Synced'
               : cp.connectionStatus === 'syncing' ? 'Syncing…'
               : 'Offline')
           : 'Saved locally'}
@@ -3314,13 +3314,23 @@ return (
   {/* Logout / Sign-in */}
   {user ? (
     <button className="sidebar-action-btn danger" onClick={() => { onSignOut(); closeSidebar(); }}>
-      🚪 Sign out
+      log out {'->'}
     </button>
   ) : (
     <>
-      <button className="sidebar-action-btn" onClick={() => { onSignIn(); closeSidebar(); }}>
-        🔑 Sign in to sync
-      </button>
+     <div 
+      style={{
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+  }}
+  onClick={() => {
+    closeSidebar();
+  }}
+>
+  <GoogleBtn onSignIn={onSignIn} />
+</div>
       <div className="sidebar-guest-note">
         Sign in to save progress across devices.
       </div>
