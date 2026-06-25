@@ -753,8 +753,7 @@ function setActiveLevel(id){
   DECKS = L.decks;
   QUIZZES = L.hasKana ? [['kana','Kana'],['vocab','Vocab'],['kanji','Kanji'],['listen','Listening'],['grammar','Grammar']]
                       : [['vocab','Vocab'],['kanji','Kanji'],['listen','Listening'],['grammar','Grammar']];
-  TABS = [['home','Overview']].concat(L.hasKana?[['kana','Kana']]:[], [['kanji','Kanji'],['vocab','Vocabulary'],['grammar','Grammar'],['practice','Practice']]);
-}
+TABS = [['home','Task']].concat(L.hasKana?[['kana','Kana']]:[], [['kanji','Kanji'],['vocab','Vocabulary'],['grammar','Grammar'],['practice','Practice']]);}
 function exWord(ex){ return (ex||'').split(' (')[0]; }
 
 /* ---------- nav ---------- */
@@ -3132,6 +3131,9 @@ function App({user,onSignIn,onSignOut,theme,setTheme}){
   const switchedRef = useRef(false);
   const cp = useCloudProgress(user, level);
   const name = user ? user.name : 'there';
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+const toggleSidebar = useCallback(() => setSidebarOpen(prev => !prev), []);
+const closeSidebar = useCallback(() => setSidebarOpen(false), []);
   setActiveLevel(level); // swap the active level's content in before children read it
 
 // Inside App component (around line 1800)
@@ -3190,21 +3192,161 @@ const navigateWithPractice = useCallback((view, sub, sub2) => {
 }, [navigate, lastPractice]);
 
 
-  return (
-    <div className="app">
-      <Nav view={v} navigate={navigateWithPractice} user={user} onSignIn={onSignIn} onSignOut={onSignOut} connectionStatus={cp.connectionStatus} level={level} setLevel={setLevel} theme={theme} setTheme={setTheme} />
-      <main className="main" key={level}>
-        {v==='home' && <Home setView={navigate} name={name} prog={cp.prog} setGoal={cp.setGoal} toggleDaily={cp.toggleDaily} setExamDate={cp.setExamDate} setLevel={setLevel} levelDue={cp.levelDue} user={user} onSignIn={onSignIn}/>}
-        {v==='kana' && <KanaView nav={navigate}/>}
-        {v==='kanji' && <KanjiView nav={navigate}/>}
-        {v==='vocab' && <VocabView nav={navigate}/>}
-        {v==='grammar' && <GrammarView nav={navigate}/>}
-        {v==='numbers' && <NumbersView/>}
-{v==='practice' && <Practice cp={cp} tool={route.sub||'review'} sub={route.sub2||''} navigate={navigate} />}      </main>
-      <footer className="foot"><div className="jp">頑張って！</div><div style={{marginTop:6}}>Built for JLPT {LEVEL_META.label} learners · Read, listen, then recall.</div></footer>
-      <BottomNav view={v} navigate={navigateWithPractice}/>
+return (
+  <div className="app">
+    {/* --- NEW HEADER --- */}
+  <header className="app-header">
+  <div className="wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+    <div className="header-brand" onClick={() => { navigate('home'); closeSidebar(); }}>
+      <span className="mark">語</span>
+      <span>
+        日本語
+        <small>JLPT {LEVEL_META.label}</small>
+      </span>
     </div>
-  );
+    <button className="hamburger" onClick={toggleSidebar} aria-label="Open menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </div>
+</header>
+
+    {/* --- OVERLAY --- */}
+    <div className={cx('sidebar-overlay', sidebarOpen && 'open')} onClick={closeSidebar} />
+
+    {/* --- SIDEBAR --- */}
+    <aside className={cx('sidebar', sidebarOpen && 'open')}>
+      <div className="sidebar-inner">
+        {/* Sidebar Header */}
+        <div className="sidebar-header">
+          <div className="sidebar-brand">
+            <span className="mark">語</span>
+            <span>
+              日本語
+              <small>JLPT {LEVEL_META.label}</small>
+            </span>
+          </div>
+          <button className="sidebar-close" onClick={closeSidebar} aria-label="Close menu">
+            ✕
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="sidebar-nav">
+          {TABS.map(([id, label]) => {
+            const iconMap = {
+              home: '🏠',
+              kana: 'あ',
+              kanji: '漢',
+              vocab: '語',
+              grammar: '文',
+              practice: '練',
+            };
+            return (
+              <span
+                key={id}
+                className={cx('sidebar-tab', v === id && 'on')}
+                onClick={() => {
+                  navigate(id);
+                  closeSidebar();
+                }}
+              >
+                <span className="tab-icon">{iconMap[id] || '•'}</span>
+                {label}
+              </span>
+            );
+          })}
+        </nav>
+
+        <div className="sidebar-divider" />
+
+        {/* Bottom Section */}
+      <div className="sidebar-bottom">
+ {/* Level Switcher */}
+  <div className="sidebar-levels">
+    {LEVEL_ORDER.map(id => (
+      <button
+        key={id}
+        className={cx('level-pill', level === id && 'on')}
+        onClick={() => {
+          setLevel(id);
+          closeSidebar();
+        }}
+      >
+        {LEVELS[id].label}
+      </button>
+    ))}
+  </div>
+
+ 
+
+  {/* Theme Toggle - NEW */}
+  <button
+    className="sidebar-action-btn"
+    onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+    style={{ justifyContent: 'center' }}
+  >
+    {theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}
+  </button>
+
+  {/* Profile */}
+  <div className="sidebar-profile">
+    <div className="sidebar-avatar">
+      {user?.photoData ? (
+        <img src={user.photoData} alt={user.name || 'User'} />
+      ) : (
+        (user ? user.name?.charAt(0).toUpperCase() : '☺')
+      )}
+    </div>
+    <div className="sidebar-profile-info">
+      <div className="name">{user ? user.name : 'Guest'}</div>
+      <div className={cx('status', cp.connectionStatus === 'synced' ? 'online' : cp.connectionStatus === 'syncing' ? 'syncing' : 'offline')}>
+        {user
+          ? (cp.connectionStatus === 'synced' ? '✓ Synced'
+              : cp.connectionStatus === 'syncing' ? 'Syncing…'
+              : 'Offline')
+          : 'Saved locally'}
+      </div>
+    </div>
+  </div>
+
+  {/* Logout / Sign-in */}
+  {user ? (
+    <button className="sidebar-action-btn danger" onClick={() => { onSignOut(); closeSidebar(); }}>
+      🚪 Sign out
+    </button>
+  ) : (
+    <>
+      <button className="sidebar-action-btn" onClick={() => { onSignIn(); closeSidebar(); }}>
+        🔑 Sign in to sync
+      </button>
+      <div className="sidebar-guest-note">
+        Sign in to save progress across devices.
+      </div>
+    </>
+  )}
+</div>
+      </div>
+    </aside>
+
+    {/* --- MAIN CONTENT --- */}
+    <main className="main" key={level}>
+      {v === 'home' && <Home setView={navigate} name={name} prog={cp.prog} setGoal={cp.setGoal} toggleDaily={cp.toggleDaily} setExamDate={cp.setExamDate} setLevel={setLevel} levelDue={cp.levelDue} user={user} onSignIn={onSignIn} />}
+      {v === 'kana' && <KanaView nav={navigate} />}
+      {v === 'kanji' && <KanjiView nav={navigate} />}
+      {v === 'vocab' && <VocabView nav={navigate} />}
+      {v === 'grammar' && <GrammarView nav={navigate} />}
+      {v === 'numbers' && <NumbersView />}
+      {v === 'practice' && <Practice cp={cp} tool={route.sub || 'review'} sub={route.sub2 || ''} navigate={navigate} />}
+    </main>
+
+    <footer className="foot">
+      <div className="jp">頑張って！</div>
+      <div style={{ marginTop: 6 }}>Built for JLPT {LEVEL_META.label} learners · Read, listen, then recall.</div>
+    </footer>
+  </div>
+);
 }
 
 /* ---------- error boundary (a render crash shows a recovery screen, never a blank page) ---------- */
