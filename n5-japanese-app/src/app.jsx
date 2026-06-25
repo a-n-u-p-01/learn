@@ -126,6 +126,9 @@ function lsGet(k){ try{ return JSON.parse(window.localStorage.getItem(k)||'null'
 function lsSet(k,v){ try{ window.localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 function lsDel(k){ try{ window.localStorage.removeItem(k); }catch(e){} }
 function userKey(uid){ return 'nihongo_u_'+uid; }
+function getCachedPhoto(uid) {
+  return lsGet('photo_' + uid) || null;
+}
 
 /* ---------- progress (cloud only — Firestore is the single source of truth) ---------- */
 function mergeProg(a,b){
@@ -169,7 +172,7 @@ function mergeDoc(a,b){
 
 /* ---------- spaced repetition (SM-2 lite) ---------- */
 const DAY_MS = 86400000;
-const NEW_PER_DAY = 100;
+const NEW_PER_DAY = 15;
 const REVIEW_BUFFER_DAYS = 10; // pure-review run-up before the exam (new material finishes by exam − this)
 const MIN_NEW_PER_DAY = 10;    // never schedule a slower pace than this — a far-off date means you finish early, not crawl
 function srsUpdate(s, grade){
@@ -2279,15 +2282,15 @@ function Quiz({ cp, mode, setMode, cat, setCat }) {
     setDone(false);
   };
 
-  const changeMode = (m) => {
-    setMode(m);
-    setCat('All');
-    setSeed(s => s + 1);
-    setI(0);
-    setPicked(null);
-    setScore(0);
-    setDone(false);
-  };
+  // const changeMode = (m) => {
+  //   setMode(m);
+  //   setCat('All');
+  //   setSeed(s => s + 1);
+  //   setI(0);
+  //   setPicked(null);
+  //   setScore(0);
+  //   setDone(false);
+  // };
 
   const choose = (opt) => {
     if (picked !== null) return;
@@ -2582,12 +2585,38 @@ function Reading({cp}){
     <div className="quiz-wrap" style={{maxWidth:'900px'}}>
       <div className="fc-bar">
         <span className="fc-count">Passage <b>{idx+1}</b> / {list.length}</span>
-        <span className="r-tools">
-          {speechSupported && <button className="spk" aria-label="Listen to the passage" onClick={play}>🔊</button>}
-          <button className={cx('swlink',showRo&&'on')} onClick={()=>setShowRo(s=>!s)}>Romaji</button>
-          <button className={cx('swlink',showEn&&'on')} onClick={()=>setShowEn(s=>!s)}>English</button>
-          {hasWords && <button className={cx('swlink',showWords&&'on')} onClick={()=>setShowWords(s=>!s)}>Words</button>}
-        </span>
+       <span className="r-tools">
+  {speechSupported && (
+    <button className="spk reading-speaker" aria-label="Listen to the passage" onClick={play}>
+      🔊
+    </button>
+  )}
+  <div className="rtoggle-group">
+    <button
+      className={cx('rtoggle', showRo && 'on')}
+      onClick={() => setShowRo(s => !s)}
+    >
+      Romaji
+      <span className="rtoggle-underline" />
+    </button>
+    <button
+      className={cx('rtoggle', showEn && 'on')}
+      onClick={() => setShowEn(s => !s)}
+    >
+      English
+      <span className="rtoggle-underline" />
+    </button>
+    {hasWords && (
+      <button
+        className={cx('rtoggle', showWords && 'on')}
+        onClick={() => setShowWords(s => !s)}
+      >
+        Words
+        <span className="rtoggle-underline" />
+      </button>
+    )}
+  </div>
+</span>
       </div>
       {/* <div className="muted" style={{fontSize:'12px',margin:'0 0 12px'}}>Tap 🔊 to hear it — the line being read lights up · <b>Romaji</b> = sound · <b>English</b> = meaning · <b>Words</b> = key vocabulary.</div> */}
       {/* {list.length>1 && (
@@ -2846,21 +2875,59 @@ function MistakeReview({cp}){
   );
 }
 
-const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: initialQuizMode }) {
+const Practice = React.memo(function Practice({ cp, tool, sub, navigate }) {
   const [isPrimaryDropdownOpen, setIsPrimaryDropdownOpen] = useState(false);
   const [isSecondaryDropdownOpen, setIsSecondaryDropdownOpen] = useState(false);
-
-  const [deckId, setDeckId] = useState(() => (DECKS[0] && DECKS[0][0]) || 'vocab');
-  const [quizMode, setQuizMode] = useState(initialQuizMode || (QUIZZES[0] && QUIZZES[0][0]) || 'vocab');
   const [quizCat, setQuizCat] = useState('All');
 
-  const t = tool || 'review';
   const mistakeCount = (cp.prog.mistakes || []).length;
 
+  // Derive deckId from tool and sub
+  const deckId = useMemo(() => {
+    if (tool === 'review' || tool === 'cards') {
+      const id = sub || DECKS[0]?.[0] || 'vocab';
+      if (DECKS.some(([d]) => d === id)) return id;
+      return DECKS[0]?.[0] || 'vocab';
+    }
+    return null;
+  }, [tool, sub]);
+
+  // Derive quizMode from tool and sub
+  const quizMode = useMemo(() => {
+    if (tool === 'quiz') {
+      const mode = sub || QUIZZES[0]?.[0] || 'vocab';
+      if (QUIZZES.some(([m]) => m === mode)) return mode;
+      return QUIZZES[0]?.[0] || 'vocab';
+    }
+    return null;
+  }, [tool, sub]);
+
+  const secondaryOptions = useMemo(() => {
+    if (tool === 'review' || tool === 'cards') {
+      return { type: 'deck', items: DECKS, current: deckId };
+    } else if (tool === 'quiz') {
+      const items = QUIZZES.map(([id, label]) => ({ id, label }));
+      return { type: 'quizMode', items, current: quizMode };
+    }
+    return null;
+  }, [tool, deckId, quizMode]);
+
+  const showCategoryChips = tool === 'quiz' && (quizMode === 'vocab' || quizMode === 'listen');
+
+  // Handlers
+  const handlePrimarySelect = (newTool) => {
+    setIsPrimaryDropdownOpen(false);
+    navigate('practice', newTool, ''); // clear sub
+  };
+
+  const handleSecondarySelect = (id) => {
+    setIsSecondaryDropdownOpen(false);
+    navigate('practice', tool, id); // keep tool, update sub
+  };
+
+  // Click‑outside refs and effect (unchanged)
   const primaryWrapperRef = useRef(null);
   const secondaryWrapperRef = useRef(null);
-
-  // Click‑outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (primaryWrapperRef.current && !primaryWrapperRef.current.contains(event.target)) {
@@ -2874,25 +2941,12 @@ const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: ini
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const secondaryOptions = useMemo(() => {
-    if (t === 'review' || t === 'cards') {
-      return { type: 'deck', items: DECKS, current: deckId, setter: setDeckId };
-    } else if (t === 'quiz') {
-      const items = QUIZZES.map(([id, label]) => ({ id, label }));
-      return { type: 'quizMode', items, current: quizMode, setter: setQuizMode };
-    }
-    return null;
-  }, [t, deckId, quizMode]);
-
-  const showCategoryChips = t === 'quiz' && (quizMode === 'vocab' || quizMode === 'listen');
-
   return (
     <section className="block wrap">
-      {/* --- Centered container matching card width --- */}
-      <div className={t === 'reading'? 'reading-wrap' : 'study-wrap'}>
-        {/* Two dropdowns, right‑aligned within this container */}
+      <div className={tool === 'reading' ? 'reading-wrap' : 'study-wrap'}>
+        {/* Dropdowns */}
         <div style={{ display: 'flex', gap: '12px', marginBottom: 30, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {/* Secondary dropdown (decks or quiz modes) */}
+          {/* Secondary dropdown */}
           {secondaryOptions && (
             <div className="dropdown-wrapper" ref={secondaryWrapperRef}>
               <button className="dropdown-toggle" onClick={() => setIsSecondaryDropdownOpen(prev => !prev)}>
@@ -2915,15 +2969,7 @@ const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: ini
                       <li
                         key={id}
                         className={cx('chip', isActive && 'on')}
-                        onClick={() => {
-                          if (secondaryOptions.type === 'deck') {
-                            setDeckId(id);
-                          } else {
-                            setQuizMode(id);
-                            setQuizCat('All');
-                          }
-                          setIsSecondaryDropdownOpen(false);
-                        }}
+                        onClick={() => handleSecondarySelect(id)}
                       >
                         {label}
                       </li>
@@ -2934,33 +2980,33 @@ const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: ini
             </div>
           )}
 
-          {/* Primary tool dropdown (far right) */}
+          {/* Primary dropdown */}
           <div className="dropdown-wrapper" ref={primaryWrapperRef}>
             <button className="dropdown-toggle" onClick={() => setIsPrimaryDropdownOpen(prev => !prev)}>
               <span>
-                {t === 'review' && '🧠 Review'}
-                {t === 'cards' && '🃏 Browse'}
-                {t === 'quiz' && '✦ Quiz'}
-                {t === 'reading' && '📖 Reading'}
-                {t === 'mock' && '📝 Mock'}
-                {t === 'mistakes' && `⚠ Mistakes${mistakeCount > 0 ? ` ${mistakeCount}` : ''}`}
+                {tool === 'review' && '🧠 Review'}
+                {tool === 'cards' && '🃏 Browse'}
+                {tool === 'quiz' && '✦ Quiz'}
+                {tool === 'reading' && '📖 Reading'}
+                {tool === 'mock' && '📝 Mock'}
+                {tool === 'mistakes' && `⚠ Mistakes${mistakeCount > 0 ? ` ${mistakeCount}` : ''}`}
               </span>
               <span className={cx('dropdown-arrow', isPrimaryDropdownOpen && 'open')}>▾</span>
             </button>
             {isPrimaryDropdownOpen && (
               <ul className="dropdown-menu">
-                <li className={cx('chip', t === 'review' && 'on')} onClick={() => { setTool('review'); setIsPrimaryDropdownOpen(false); }}>🧠 Review</li>
-                <li className={cx('chip', t === 'cards' && 'on')} onClick={() => { setTool('cards'); setIsPrimaryDropdownOpen(false); }}>🃏 Browse</li>
-                <li className={cx('chip', t === 'quiz' && 'on')} onClick={() => { setTool('quiz'); setIsPrimaryDropdownOpen(false); }}>✦ Quiz</li>
-                <li className={cx('chip', t === 'reading' && 'on')} onClick={() => { setTool('reading'); setIsPrimaryDropdownOpen(false); }}>📖 Reading</li>
-                <li className={cx('chip', t === 'mock' && 'on')} onClick={() => { setTool('mock'); setIsPrimaryDropdownOpen(false); }}>📝 Mock</li>
-                <li className={cx('chip', t === 'mistakes' && 'on')} onClick={() => { setTool('mistakes'); setIsPrimaryDropdownOpen(false); }}>⚠ Mistakes{mistakeCount > 0 ? ` ${mistakeCount}` : ''}</li>
+                <li className={cx('chip', tool === 'review' && 'on')} onClick={() => handlePrimarySelect('review')}>🧠 Review</li>
+                <li className={cx('chip', tool === 'cards' && 'on')} onClick={() => handlePrimarySelect('cards')}>🃏 Browse</li>
+                <li className={cx('chip', tool === 'quiz' && 'on')} onClick={() => handlePrimarySelect('quiz')}>✦ Quiz</li>
+                <li className={cx('chip', tool === 'reading' && 'on')} onClick={() => handlePrimarySelect('reading')}>📖 Reading</li>
+                <li className={cx('chip', tool === 'mock' && 'on')} onClick={() => handlePrimarySelect('mock')}>📝 Mock</li>
+                <li className={cx('chip', tool === 'mistakes' && 'on')} onClick={() => handlePrimarySelect('mistakes')}>⚠ Mistakes{mistakeCount > 0 ? ` ${mistakeCount}` : ''}</li>
               </ul>
             )}
           </div>
         </div>
 
-        {/* Category chips (only for vocab/listen) – also inside the container */}
+        {/* Category chips for vocab/listen quizzes */}
         {showCategoryChips && (
           <div className="chips" style={{ justifyContent: 'center', marginBottom: 22 }}>
             {VOCAB_CATS.map(c => (
@@ -2971,23 +3017,22 @@ const Practice = React.memo(function Practice({ cp, tool, setTool, quizMode: ini
           </div>
         )}
 
-        {/* Render the selected tool – it will also be inside .study-wrap */}
-        {t === 'quiz' ? (
+        {/* Render the selected tool */}
+        {tool === 'quiz' ? (
           <Quiz
             key={'q-' + quizMode}
             cp={cp}
             mode={quizMode}
-            setMode={setQuizMode}
             cat={quizCat}
             setCat={setQuizCat}
           />
-        ) : t === 'cards' ? (
+        ) : tool === 'cards' ? (
           <Flashcards cp={cp} deckId={deckId} />
-        ) : t === 'reading' ? (
+        ) : tool === 'reading' ? (
           <Reading cp={cp} />
-        ) : t === 'mock' ? (
+        ) : tool === 'mock' ? (
           <Mock cp={cp} />
-        ) : t === 'mistakes' ? (
+        ) : tool === 'mistakes' ? (
           <MistakeReview cp={cp} />
         ) : (
           <Review cp={cp} deckId={deckId} />
@@ -3088,6 +3133,18 @@ function App({user,onSignIn,onSignOut,theme,setTheme}){
   const cp = useCloudProgress(user, level);
   const name = user ? user.name : 'there';
   setActiveLevel(level); // swap the active level's content in before children read it
+
+// Inside App component (around line 1800)
+const [lastPractice, setLastPractice] = useState({ tool: 'review', sub: '' });
+
+// Update lastPractice whenever the route changes to practice with a sub
+useEffect(() => {
+  if (route.view === 'practice' && route.sub) {
+    setLastPractice({ tool: route.sub, sub: route.sub2 || '' });
+  }
+}, [route]);
+
+
   // resume the level the user was last on (works for local guest doc + cloud doc once it loads)
   useEffect(()=>{ if(cp.activeLevel && cp.activeLevel!==level && !switchedRef.current){ switchedRef.current=true; setLevelState(cp.activeLevel); } },[cp.activeLevel]);
 const setLevel = (lv) => {
@@ -3119,10 +3176,23 @@ const setLevel = (lv) => {
   //   return <Splash />;
   // }
 
+  // Inside App, after the useEffect above
+const navigateWithPractice = useCallback((view, sub, sub2) => {
+  if (view === 'practice' && !sub) {
+    // Use the last known practice route if available
+    const { tool, sub: lastSub } = lastPractice;
+    if (tool) {
+      navigate('practice', tool, lastSub);
+      return;
+    }
+  }
+  navigate(view, sub, sub2);
+}, [navigate, lastPractice]);
+
 
   return (
     <div className="app">
-      <Nav view={v} navigate={navigate} user={user} onSignIn={onSignIn} onSignOut={onSignOut} connectionStatus={cp.connectionStatus} level={level} setLevel={setLevel} theme={theme} setTheme={setTheme} />
+      <Nav view={v} navigate={navigateWithPractice} user={user} onSignIn={onSignIn} onSignOut={onSignOut} connectionStatus={cp.connectionStatus} level={level} setLevel={setLevel} theme={theme} setTheme={setTheme} />
       <main className="main" key={level}>
         {v==='home' && <Home setView={navigate} name={name} prog={cp.prog} setGoal={cp.setGoal} toggleDaily={cp.toggleDaily} setExamDate={cp.setExamDate} setLevel={setLevel} levelDue={cp.levelDue} user={user} onSignIn={onSignIn}/>}
         {v==='kana' && <KanaView nav={navigate}/>}
@@ -3130,10 +3200,9 @@ const setLevel = (lv) => {
         {v==='vocab' && <VocabView nav={navigate}/>}
         {v==='grammar' && <GrammarView nav={navigate}/>}
         {v==='numbers' && <NumbersView/>}
-        {v==='practice' && <Practice cp={cp} tool={route.sub||'review'} setTool={(x)=>navigate('practice', x==='review'?'':x)} quizMode={route.sub2}/>}
-      </main>
+{v==='practice' && <Practice cp={cp} tool={route.sub||'review'} sub={route.sub2||''} navigate={navigate} />}      </main>
       <footer className="foot"><div className="jp">頑張って！</div><div style={{marginTop:6}}>Built for JLPT {LEVEL_META.label} learners · Read, listen, then recall.</div></footer>
-      <BottomNav view={v} navigate={navigate}/>
+      <BottomNav view={v} navigate={navigateWithPractice}/>
     </div>
   );
 }
@@ -3206,15 +3275,19 @@ unsub = cloud.onAuth(function(fu) {
     setUser(profile);
 
     // Cache the photo offline
-    if (fu.photoURL) {
-  fetchAndCachePhoto(fu.photoURL, fu.uid).then(photoData => {
-    if (photoData) {
-      setUser(prev => ({
-        ...prev,
-        photoData
-      }));
-    }
-  });
+  if (fu.photoURL) {
+  const cachedPhoto = getCachedPhoto(fu.uid);
+  if (cachedPhoto) {
+    // Use cached version immediately – no network request
+    setUser(prev => ({ ...prev, photoData: cachedPhoto }));
+  } else {
+    // No cached version – fetch and cache
+    fetchAndCachePhoto(fu.photoURL, fu.uid).then(photoData => {
+      if (photoData) {
+        setUser(prev => ({ ...prev, photoData }));
+      }
+    });
+  }
 }
   } else {
     lsDel('user_profile');
@@ -3242,15 +3315,19 @@ const signIn = () => {
         lsSet('user_profile', profile);
         setUser(profile);
 
-      if (fu.photoURL) {
-  fetchAndCachePhoto(fu.photoURL, fu.uid).then(photoData => {
-    if (photoData) {
-      setUser(prev => ({
-        ...prev,
-        photoData
-      }));
-    }
-  });
+if (fu.photoURL) {
+  const cachedPhoto = getCachedPhoto(fu.uid);
+  if (cachedPhoto) {
+    // Use cached version immediately – no network request
+    setUser(prev => ({ ...prev, photoData: cachedPhoto }));
+  } else {
+    // No cached version – fetch and cache
+    fetchAndCachePhoto(fu.photoURL, fu.uid).then(photoData => {
+      if (photoData) {
+        setUser(prev => ({ ...prev, photoData }));
+      }
+    });
+  }
 }
       });
     }
