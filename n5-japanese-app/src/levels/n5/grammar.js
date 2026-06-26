@@ -1,6 +1,7 @@
 // N5_GRAMMAR — content + enrichment (auto-merged from enrich/)
 var N5_GRAMMAR = [
   {
+    "id": 1,    
     "point": "は (wa)",
     "meaning": "what the sentence is about",
     "explain": "Put は (say it \"wa\") right after the thing you want to talk about. 私は学生です = \"I'm a student\" (sort of like \"as for me, student\"). Use it to say what your whole sentence is about.",
@@ -33,6 +34,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 2,
     "point": "です / だ",
     "meaning": "is / am / are",
     "explain": "です is the friendly way to say \"is / am / are\" and it sits at the end. これはペンです = \"this is a pen.\" Use です with most people; だ is the relaxed version you'd use with close friends.",
@@ -65,6 +67,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 3,
     "point": "が (ga)",
     "meaning": "who or what does something",
     "explain": "が points at who or what does the action, or what exists. 猫がいます = \"there is a cat.\" You often reach for it when the info is brand new or it answers a \"who?\" / \"what?\" question.",
@@ -97,6 +100,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 4,
     "point": "を (o)",
     "meaning": "the thing an action happens to",
     "explain": "を (say \"o\") goes right after the thing the action happens to. パンを食べる = \"eat bread\" — the bread is what gets eaten. It always comes just before the verb.",
@@ -129,6 +133,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 5,
     "point": "に (ni)",
     "meaning": "time / destination / location",
     "explain": "に points to a time or a place you go to, or where something sits. 七時に起きます = \"I get up at seven\"; 学校に行きます = \"I go to school.\" Think of it as pinning to one exact spot.",
@@ -161,6 +166,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 6,
     "point": "で (de)",
     "meaning": "place of action / means",
     "explain": "で (say \"de\") shows where an action happens or what tool you use. 学校で勉強します = \"I study at school\"; バスで行きます = \"I go by bus.\" It answers \"where is it done?\" or \"how?\"",
@@ -193,6 +199,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 7,
     "point": "へ (e)",
     "meaning": "direction",
     "explain": "へ (say \"e\" here) shows the direction you're heading. 日本へ行きます = \"I'm going to Japan.\" It gives a \"toward that place\" feeling, much like に does for where you're going.",
@@ -225,6 +232,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 8,
     "point": "と (to)",
     "meaning": "and / with",
     "explain": "と does two jobs: it ties nouns into a full list, and it shows who you do something with. パンとたまごを買います = \"I buy bread and eggs\"; 友だちと話します = \"I talk with a friend.\"",
@@ -257,6 +265,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 9,
     "point": "も (mo)",
     "meaning": "also, too",
     "explain": "も means \"also\" or \"too.\" 私も学生です = \"I'm a student too.\" You stick it on a word to say this is one more of the same kind.",
@@ -289,6 +298,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 10,
     "point": "の (no)",
     "meaning": "possessive / linking",
     "explain": "の links two words to show ownership or connection. 私の本 = \"my book\"; 日本語の先生 = \"a Japanese teacher.\" The owner or describer comes first, then の, then the thing.",
@@ -321,6 +331,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 11,
     "point": "か (ka)",
     "meaning": "makes a question",
     "explain": "か goes at the very end of a sentence to turn it into a question, like a spoken question mark. 学生です = \"you're a student\" becomes 学生ですか = \"are you a student?\"",
@@ -353,6 +364,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 12,
     "point": "～ます / ～ません",
     "meaning": "polite verb / negative",
     "explain": "～ます is the polite ending on a verb for things you do now or will do. 肉を食べます = \"I eat meat.\" Swap it to ～ません for \"don't\": お酒を飲みません = \"I don't drink alcohol.\"",
@@ -385,6 +397,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 13,
     "point": "～ました / ～ませんでした",
     "meaning": "polite past / past negative",
     "explain": "These are the past versions of polite verbs: ～ました = \"did\" and ～ませんでした = \"didn't.\" 映画を見ました = \"I watched a movie\"; 行きませんでした = \"I didn't go.\"",
@@ -417,6 +430,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 14,
     "point": "～ませんか",
     "meaning": "invitation (won't you?)",
     "explain": "～ませんか is a warm way to invite someone to do something together — it comes out like \"won't you...?\" お茶を飲みませんか = \"won't you have some tea?\" It feels gentler than just telling someone to do it.",
@@ -449,6 +463,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 15,
     "point": "～ましょう",
     "meaning": "let's ～",
     "explain": "～ましょう means \"let's...\" and suggests doing something together. 一緒に行きましょう = \"let's go together.\" You make it by changing the ～ます ending to ～ましょう.",
@@ -481,6 +496,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 16,
     "point": "い-adjectives",
     "meaning": "adjective type 1",
     "explain": "These describing words end in い, like 高い (expensive). この本は高いです = \"this book is expensive.\" To say \"not,\" drop the last い and add くない: 高い → 高くない.",
@@ -513,6 +529,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 17,
     "point": "な-adjectives",
     "meaning": "adjective type 2",
     "explain": "These describing words need な when they sit in front of a noun, like 元気な人 (an energetic person). To finish a sentence with one, just add です: この町は静かです = \"this town is quiet.\"",
@@ -545,6 +562,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 18,
     "point": "これ / それ / あれ",
     "meaning": "this / that / that over there",
     "explain": "これ (this), それ (that), and あれ (that over there) stand on their own in place of naming a thing. これは何ですか = \"what is this?\" Pick by distance: これ is near you, それ near the other person, あれ far from you both.",
@@ -577,6 +595,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 19,
     "point": "この / その / あの + noun",
     "meaning": "this/that ～",
     "explain": "この, その, and あの go straight in front of a noun to mean \"this/that ___.\" この本を読みます = \"I'll read this book.\" They follow the same near / middle / far idea as これ/それ/あれ.",
@@ -609,6 +628,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 20,
     "point": "～たい",
     "meaning": "want to ～",
     "explain": "～たい sticks onto a verb to say what YOU want to do. 寿司が食べたいです = \"I want to eat sushi.\" You drop ます from the polite verb and add たい instead.",
@@ -641,6 +661,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 21,
     "point": "～てください",
     "meaning": "please do ～",
     "explain": "～てください means \"please do ___.\" ちょっと待ってください = \"please wait a moment.\" It's the everyday polite way to ask someone to do something for you.",
@@ -673,6 +694,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 22,
     "point": "～ています",
     "meaning": "ongoing action / state",
     "explain": "～ています shows either an action happening right now or an ongoing situation. 今、ご飯を食べています = \"I'm eating now\"; 東京に住んでいます = \"I live in Tokyo.\" It's like English \"-ing,\" but it also covers settled states.",
@@ -705,6 +727,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 23,
     "point": "ある / いる",
     "meaning": "there is / exists",
     "explain": "Both ある and いる mean \"there is / exists,\" but you choose by what you're talking about: いる for living things (people, animals), ある for non-living things. Their polite forms are います and あります.",
@@ -737,6 +760,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 24,
     "point": "から / まで",
     "meaning": "from / until",
     "explain": "から marks where something starts and まで where it ends, for both time and place. 九時から五時まで働きます = \"I work from nine to five\"; 駅から家まで = \"from the station to home.\" They often come as a pair.",
@@ -769,6 +793,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 25,
     "point": "～が、～",
     "meaning": "but, however",
     "explain": "This ～が joins two halves of a sentence to show a contrast, like English \"but.\" 高いですが、おいしいです = \"it's expensive, but it's delicious.\" The が comes after the first half, leading into the opposite idea.",
@@ -801,6 +826,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 26,
     "point": "～じゃありません",
     "meaning": "is not (noun)",
     "explain": "～じゃありません is the polite way to say \"is not\" for nouns and な-type words. これは本じゃありません = \"this is not a book.\" The casual version is じゃない.",
@@ -833,6 +859,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 27,
     "point": "～でした",
     "meaning": "was (noun, past)",
     "explain": "～でした is the past of です, meaning \"was,\" for nouns and な-type words. 昨日は休みでした = \"yesterday was a day off.\" To say \"wasn't,\" use じゃありませんでした.",
@@ -865,6 +892,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 28,
     "point": "い-adjective past (～かった)",
     "meaning": "was ～",
     "explain": "To put an い-type describing word into the past, drop the last い and add かった. 楽しい (fun) becomes 楽しかった (was fun): 旅行は楽しかったです = \"the trip was fun.\" The odd one to memorize is いい → よかった.",
@@ -897,6 +925,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 29,
     "point": "～て (te-form)",
     "meaning": "and (joining)",
     "explain": "The て-form is a connecting shape that strings actions together, like \"I get up AND wash my face.\" 朝起きて、顔を洗います shows that flow. For the い-type describing words, the matching connector is くて: 安くて、おいしい (cheap and tasty).",
@@ -929,6 +958,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 30,
     "point": "～から (because)",
     "meaning": "because, so",
     "explain": "This ～から comes after a reason and means \"because\" or \"so.\" 忙しいから、行きません = \"because I'm busy, I won't go.\" The reason goes first, then から, then the result.",
@@ -961,6 +991,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 31,
     "point": "～ないでください",
     "meaning": "please don't ～",
     "explain": "～ないでください means \"please don't do ___.\" 心配しないでください = \"please don't worry.\" It's the polite way to ask someone to hold off on something.",
@@ -993,6 +1024,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 32,
     "point": "～ましょうか",
     "meaning": "shall I / shall we?",
     "explain": "～ましょうか offers to do something for someone (\"shall I open the window?\") or proposes doing it together (\"shall we?\"). 窓を開けましょうか = \"shall I open the window?\" It's ～ましょう with a questioning か added.",
@@ -1025,6 +1057,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 33,
     "point": "～がほしい",
     "meaning": "want (something)",
     "explain": "～がほしい says you want a thing (a noun, not an action). 新しいかばんがほしいです = \"I want a new bag.\" The thing you want gets が in front of ほしい.",
@@ -1057,6 +1090,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 34,
     "point": "～が上手 / 下手",
     "meaning": "good / bad at",
     "explain": "To say you're good or bad at something, put が on the skill and add 上手 (good at) or 下手 (bad at). 歌が上手 = \"good at singing\"; 料理が下手 = \"bad at cooking.\"",
@@ -1089,6 +1123,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 35,
     "point": "もう / まだ",
     "meaning": "already / not yet",
     "explain": "もう means \"already\" and teams up with a past verb: もう昼ご飯を食べました = \"I already ate lunch.\" まだ means \"still\" or \"not yet\": まだ食べていません = \"I haven't eaten yet.\"",
@@ -1121,6 +1156,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 36,
     "point": "～や～",
     "meaning": "and (examples)",
     "explain": "～や～ lists a couple of nouns as examples, hinting there's more (\"books, pens, and so on\"). 机の上に本やペンがあります = \"there are books, pens, and such on the desk.\" It's the \"like, for example\" version of \"and.\"",
@@ -1153,6 +1189,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 37,
     "point": "～ね / ～よ",
     "meaning": "sentence-end particles",
     "explain": "ね and よ are little add-ons at the end of a sentence. ね fishes for agreement (いい天気ですね = \"nice weather, isn't it?\"), and よ adds emphasis or tells someone new info (これは便利ですよ = \"this is handy, you know\").",
@@ -1185,6 +1222,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 38,
     "point": "～くなる / ～になる",
     "meaning": "become ～",
     "explain": "These show that something \"becomes\" a new state. For the い-type words, drop い and add くなる: 寒くなる (get cold). For な-type words and nouns, add になる: 元気になる (get well).",
@@ -1217,6 +1255,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 39,
     "point": "一番",
     "meaning": "the most (superlative)",
     "explain": "一番 means \"number one,\" and placed before a describing word it makes \"the most.\" 一番高い = \"the tallest\": 富士山は日本で一番高い山です = \"Mt. Fuji is the tallest mountain in Japan.\" Use it to pick out the top one in a group.",
@@ -1249,6 +1288,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 40,
     "point": "～より",
     "meaning": "than (comparison)",
     "explain": "～より marks what you're comparing against, meaning \"than.\" The shape A は B より ～ says \"A is more ~ than B\": 電車はバスより速いです = \"trains are faster than buses.\"",
@@ -1281,6 +1321,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 41,
     "point": "～前に / ～後で",
     "meaning": "before / after",
     "explain": "These tell when something happens compared to another action. Plain verb + 前に means \"before doing\" (寝る前に = before sleeping); past verb + 後で means \"after doing\" (食べた後で = after eating).",
@@ -1313,6 +1354,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 42,
     "point": "～のほうが",
     "meaning": "A is more ~ (comparison)",
     "explain": "～のほうが points out which of two choices is \"more.\" 電車のほうが速いです = \"the train is faster.\" The full shape A より B のほうが ～ means \"B is more ~ than A.\"",
@@ -1345,6 +1387,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 43, 
     "point": "～でしょう",
     "meaning": "probably; …right?",
     "explain": "～でしょう shows something is likely (\"it'll probably rain\") or gently asks for agreement (\"it's tasty, right?\"). あした雨でしょう = \"it'll probably rain tomorrow.\" You attach it to the plain form of a word.",
@@ -1377,6 +1420,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 44,
     "point": "そして / それから",
     "meaning": "and; and then",
     "explain": "そして and それから join two sentences. そして means \"and (also),\" while それから means \"after that / and then,\" adding a sense of order. Both kick off the second sentence: 宿題をします。それから、寝ます = \"I'll do homework. After that, I'll sleep.\"",
@@ -1409,6 +1453,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 45,
     "point": "でも",
     "meaning": "but, however",
     "explain": "でも starts a fresh sentence to push back against what was just said, like \"but\" or \"however.\" 高いです。でも、買います = \"it's expensive. But I'll buy it.\" It's the casual everyday pick; しかし is more formal.",
@@ -1441,6 +1486,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 46,
     "point": "～ことができる",
     "meaning": "can, be able to",
     "explain": "～ことができる is a polite way to say \"can\" or \"be able to.\" Plain verb + ことができます means \"can do ~\": 日本語を話すことができます = \"I can speak Japanese.\" It states an ability.",
@@ -1473,6 +1519,7 @@ var N5_GRAMMAR = [
     ]
   },
   {
+    "id": 47,
     "point": "何か・誰か・どこか",
     "meaning": "something / someone / somewhere",
     "explain": "Adding か to a question word makes it fuzzy: 何か (something), 誰か (someone), どこか (somewhere). 何か食べますか = \"will you eat something?\" Use them when you don't know or don't need to say exactly which.",

@@ -2583,7 +2583,7 @@ function splitSentences(text){
   return out;
 }
 /* ---------- reading (new interactive version – top: page number + controls, bottom: Prev/Next + counter) ---------- */
-function Reading({ cp }) {
+  function Reading({ cp }) {
   // ---- enrich passages ----
   const enrichedPassages = useMemo(() => {
     return (READING || []).map(p => {
@@ -2726,6 +2726,16 @@ function Reading({ cp }) {
     setActiveTokenIdx(idx);
   };
 
+  // ---- auto-play vocab audio on tooltip open ----
+  useEffect(() => {
+    if (activeTokenIdx !== null && tokens[activeTokenIdx] && tokens[activeTokenIdx].type === 'vocab') {
+      const vocab = tokens[activeTokenIdx].vocab;
+      if (vocab && vocab.kana) {
+        speak(vocab.kana);
+      }
+    }
+  }, [activeTokenIdx, tokens]);
+
   // ---- close tooltip ----
   useEffect(() => {
     const handler = (e) => {
@@ -2783,7 +2793,7 @@ function Reading({ cp }) {
           {/* Top bar: page number (left) + controls (right) */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span className="muted" style={{ fontSize: '15px', fontWeight: 600 }}>
-              {/* {currentIndex + 1} */}
+              {/* {currentIndex + 1} */} {/* hidden as requested */}
             </span>
             <span className="r-tools">
               {speechSupported && (
@@ -2843,7 +2853,7 @@ function Reading({ cp }) {
           {/* Reference panel */}
           {showReference && (
             <div className="reading-ref" style={{marginTop:20, padding:16, background:'var(--bg-1)', borderRadius:'var(--r)', border:'1px solid var(--line)'}}>
-              {/* {currentPassage.vocabItems.length > 0 && (
+              {currentPassage.vocabItems.length > 0 && (
                 <div style={{marginBottom:16}}>
                   <div style={{fontWeight:700, marginBottom:8, color:'var(--accent-2)'}}>Vocabulary</div>
                   <div style={{display:'grid', gap:6}}>
@@ -2857,7 +2867,7 @@ function Reading({ cp }) {
                     ))}
                   </div>
                 </div>
-              )} */}
+              )}
               {currentPassage.kanjiItems.length > 0 && (
                 <div style={{marginBottom:16}}>
                   <div style={{fontWeight:700, marginBottom:8, color:'var(--accent-2)'}}>Kanji</div>
