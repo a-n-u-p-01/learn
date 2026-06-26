@@ -945,3 +945,61 @@ section{scroll-margin-top:84px}
 @media(max-width:760px){.nav .tabs{display:none}.main{padding-bottom:16px}.foot{margin-bottom:0}}
 @media(max-width:480px){.sidebar{width:88vw;right:10px;max-height:85vh}.sidebar-tab{font-size:13px;padding:10px 12px}.sidebar-brand span{font-size:13px}.sidebar-brand .mark{width:30px;height:30px;font-size:16px}.level-pill{font-size:11px;padding:6px 0}.sidebar-avatar{width:32px;height:32px;font-size:12px}.sidebar-profile{padding:8px 10px}.sidebar-close{width:30px;height:30px;font-size:14px}.sidebar-inner{padding:12px 10px 16px 10px}}
 @media(max-width:380px){.sidebar{width:92vw;right:8px;max-height:82vh}.sidebar-tab{font-size:12px;padding:8px 10px;gap:8px}.sidebar-tab .tab-icon{font-size:15px;width:20px}.sidebar-brand span{font-size:12px}.sidebar-brand .mark{width:26px;height:26px;font-size:14px}.level-pill{font-size:10px;padding:5px 0}.sidebar-close{width:26px;height:26px;font-size:12px}.sidebar-inner{padding:10px 8px 14px 8px}}
+
+
+
+/* Interactive vocab tokens */
+.vocab-token {
+  cursor: pointer;
+  border-bottom: 2px dotted var(--accent);
+  padding: 2px 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.vocab-token:hover {
+  background: var(--accent-dim);
+  border-bottom-color: var(--accent-2);
+}
+
+/* Tooltip – we use inline styles, but we can add a class for extra polish */
+#vocab-tooltip {
+  pointer-events: auto;
+  animation: tooltipFadeIn 0.15s ease;
+}
+
+@keyframes tooltipFadeIn {
+  from { opacity: 0; transform: translate(-50%, -90%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+}
+
+/* Reference panel */
+.reading-ref {
+  background: var(--bg-1);
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  padding: 16px;
+  margin-top: 20px;
+}
+
+/* ----- Footer always at bottom ----- */
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 120vh;
+}
+
+.main {
+  flex: 1;
+}
+
+/* Already exists, but ensure it doesn't conflict */
+.foot {
+  margin-top: 0; /* remove any default margin that might push it up */
+}
+
+/* Mobile bottom nav – the footer sits above it */
+@media (max-width: 760px) {
+  .main {
+    padding-bottom: 82px; /* keep this, already present */
+  }
+}

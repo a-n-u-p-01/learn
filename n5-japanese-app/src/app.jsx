@@ -636,31 +636,56 @@ const levelDue = useMemo(() => {
 let JA_VOICE = null;
 function _loadVoices(){ try{ const vs=window.speechSynthesis.getVoices()||[]; JA_VOICE=vs.filter(v=>v.lang&&v.lang.toLowerCase().indexOf('ja')===0)[0]||null; }catch(e){} }
 let speechSupported = false;
+// ===== NEW: Voice loading promise =====
+let voicesResolve = null;
+const voicesReady = new Promise((resolve) => {
+  voicesResolve = resolve;
+});
+let voiceLoadAttempted = false;
+
+function ensureVoicesLoaded() {
+  if (voiceLoadAttempted) return voicesReady;
+  voiceLoadAttempted = true;
+  if (typeof window === 'undefined' || !window.speechSynthesis) {
+    voicesResolve();
+    return voicesReady;
+  }
+  const synth = window.speechSynthesis;
+  if (synth.getVoices().length > 0) {
+    voicesResolve();
+    return voicesReady;
+  }
+  synth.onvoiceschanged = () => {
+    voicesResolve();
+    synth.onvoiceschanged = null;
+  };
+  // Fallback: resolve after 3 seconds anyway
+  setTimeout(voicesResolve, 3000);
+  return voicesReady;
+}
+// ===== /NEW =====
 try{ speechSupported = typeof window!=='undefined' && !!window.speechSynthesis; }catch(e){}
 if(speechSupported){ _loadVoices(); try{ window.speechSynthesis.onvoiceschanged=_loadVoices; }catch(e){} }
 let _warmed=false;
 function warmSpeech(){ if(_warmed||!speechSupported)return; _warmed=true; try{ const u=new SpeechSynthesisUtterance(' '); u.volume=0; window.speechSynthesis.speak(u); }catch(e){} }
-function speak(text, h) {
-  if (!speechSupported) {
-    return;
-  }
-  if (!text) {
-    return;
-  }
+async function speak(text, h) {
+  if (!speechSupported || !text) return;
 
   try {
-    const synth = window.speechSynthesis;
-    const isOnline = navigator.onLine;
+    await ensureVoicesLoaded();
 
+    const synth = window.speechSynthesis;
     if (synth.speaking || synth.pending) synth.cancel();
+
+    // Refresh the Japanese voice after loading
+    const voices = synth.getVoices();
+    const jaVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('ja'));
+    JA_VOICE = jaVoice || null;
 
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'ja-JP';
     u.rate = 0.85;
-
-    if (isOnline && JA_VOICE) {
-      u.voice = JA_VOICE;
-    } 
+    if (JA_VOICE) u.voice = JA_VOICE;
 
     if (h && h.boundary) u.onboundary = h.boundary;
     if (h && h.end) { u.onend = h.end; u.onerror = h.end; }
@@ -673,46 +698,56 @@ function speak(text, h) {
 }
 
 function SpeakBtn({ text, label, lg }) {
+  const [loading, setLoading] = useState(true);
   const [hasOfflineVoice, setHasOfflineVoice] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
-    const updateVoices = () => {
+    let isMounted = true;
+
+    async function initVoice() {
+      await ensureVoicesLoaded();
+      if (!isMounted) return;
+
       const voices = window.speechSynthesis.getVoices();
       const jaVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('ja'));
+      const hasLocal = jaVoices.some(v => !v.name.toLowerCase().includes('google'));
+      setHasOfflineVoice(hasLocal);
+      setLoading(false);
+    }
 
-      const hasLocalJapanese = jaVoices.some(v =>
-        !v.name.toLowerCase().includes('google')
-      );
-      setHasOfflineVoice(hasLocalJapanese);
-    };
+    initVoice();
 
-    updateVoices();
-    window.speechSynthesis.onvoiceschanged = updateVoices;
+    const update = () => {
+      if (!isMounted) return;
+      const voices = window.speechSynthesis.getVoices();
+      const jaVoices = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith('ja'));
+      const hasLocal = jaVoices.some(v => !v.name.toLowerCase().includes('google'));
+      setHasOfflineVoice(hasLocal);
+      setLoading(false);
+    };
+    window.speechSynthesis.onvoiceschanged = update;
 
-    const handleOnline = () => {
-      setIsOnline(true);
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-    };
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
     return () => {
+      isMounted = false;
       window.speechSynthesis.onvoiceschanged = null;
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
-  if (!speechSupported) {
-    return null;
-  }
+  if (!speechSupported) return null;
 
-  const isDisabled = !isOnline && !hasOfflineVoice;
+  const isDisabled = loading || (!isOnline && !hasOfflineVoice);
 
-  const title = isDisabled
+  const title = loading
+    ? 'Loading voice…'
+    : isDisabled
     ? 'Voice unavailable offline'
     : `Play pronunciation${label ? ' for ' + label : ''}`;
 
@@ -732,7 +767,7 @@ function SpeakBtn({ text, label, lg }) {
         if (!isDisabled) speak(text);
       }}
     >
-      🔊
+      {loading ? '⏳' : '🔊'}
     </button>
   );
 }
@@ -2547,107 +2582,370 @@ function splitSentences(text){
   if(buf) out.push({t:buf,start:start});
   return out;
 }
-function Reading({cp}){
-  // order passages easy → JLPT-style so it feels like a progression
-  const list = useMemo(function(){ return READING.slice().sort(function(a,b){ return splitSentences(a.jp).length - splitSentences(b.jp).length; }); },[]);
-  const [idx,setIdx] = useState(0);
-  const [picked,setPicked] = useState({});
-  const [showEn,setShowEn] = useState(false);
-  const [showRo,setShowRo] = useState(false);
-  const [showWords,setShowWords] = useState(false);
-  const [active,setActive] = useState(-1);
-  const p = list[idx];
-  const segs = useMemo(()=>splitSentences(p.jp),[idx,p.jp]);
+/* ---------- reading (new interactive version – top: page number + controls, bottom: Prev/Next + counter) ---------- */
+function Reading({ cp }) {
+  // ---- enrich passages ----
+  const enrichedPassages = useMemo(() => {
+    return (READING || []).map(p => {
+      const vocabItems = (p.vocab || []).map(id =>
+        VOCAB.find(v => v.id === id)
+      ).filter(Boolean);
+      const kanjiItems = (p.kanji || []).map(id =>
+        KANJI.find(k => k.id === id)
+      ).filter(Boolean);
+      const grammarItems = (p.grammar || []).map(id =>
+        GRAMMAR.find(g => g.id === id)
+      ).filter(Boolean);
+      return { ...p, vocabItems, kanjiItems, grammarItems };
+    });
+  }, []);
+
+  // ---- selection ----
+  const [selectedId, setSelectedId] = useState(() => {
+    if (enrichedPassages.length) return enrichedPassages[0].id;
+    return null;
+  });
+
+  const currentPassage = useMemo(() => {
+    return enrichedPassages.find(p => p.id === selectedId) || null;
+  }, [selectedId, enrichedPassages]);
+
+  const currentIndex = enrichedPassages.findIndex(p => p.id === selectedId);
+  const total = enrichedPassages.length;
+
+  // ---- tokenisation ----
+  const tokens = useMemo(() => {
+    if (!currentPassage) return [];
+    const text = currentPassage.jp;
+    const vocabItems = currentPassage.vocabItems || [];
+    const wordMap = {};
+    vocabItems.forEach(v => {
+      const key = v.jp;
+      if (!wordMap[key]) wordMap[key] = v;
+    });
+    const sortedWords = Object.keys(wordMap).sort((a, b) => b.length - a.length);
+    const result = [];
+    let i = 0;
+    while (i < text.length) {
+      let matched = false;
+      for (const word of sortedWords) {
+        if (text.startsWith(word, i)) {
+          result.push({
+            type: 'vocab',
+            text: word,
+            vocab: wordMap[word],
+            start: i,
+            end: i + word.length
+          });
+          i += word.length;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        result.push({
+          type: 'char',
+          text: text[i],
+          start: i,
+          end: i + 1
+        });
+        i++;
+      }
+    }
+    return result;
+  }, [currentPassage]);
+
+  // ---- tooltip ----
+  const [activeTokenIdx, setActiveTokenIdx] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const tokenRefs = useRef({});
+
+  // ---- toggles ----
+  const [showRomaji, setShowRomaji] = useState(false);
+  const [showEnglish, setShowEnglish] = useState(false);
+  const [showReference, setShowReference] = useState(false);
+
+  // ---- audio ----
+  const [activeSentence, setActiveSentence] = useState(-1);
   const runRef = useRef(0);
-  const stopAudio=()=>{ runRef.current++; try{window.speechSynthesis.cancel();}catch(e){} };
-  useEffect(()=>()=>stopAudio(),[]);
-  const go=(d)=>{ stopAudio(); setActive(-1); setIdx(i=>{ const n=i+d; if(n<0)return list.length-1; if(n>=list.length)return 0; return n; }); setPicked({}); setShowEn(false); setShowRo(false); setShowWords(false); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} };
-  // play one sentence at a time, highlighting exactly the sentence being spoken (always in sync)
-  const play=()=>{
+  const stopAudio = useCallback(() => {
+    runRef.current++;
+    try { window.speechSynthesis.cancel(); } catch(e) {}
+  }, []);
+
+  const playFull = useCallback(() => {
+    if (!currentPassage) return;
     stopAudio();
-    const myRun=++runRef.current; const sgs=segs;
-    const step=function(i){
-      if(runRef.current!==myRun) return;
-      if(i>=sgs.length){ setActive(-1); return; }
-      const txt=(sgs[i].t||'').replace(/\n/g,' ').trim();
-      if(!txt){ step(i+1); return; }
-      setActive(i);
-      speak(txt, { end:function(){ if(runRef.current===myRun) setTimeout(function(){ step(i+1); },120); } });
+    const myRun = ++runRef.current;
+    speak(currentPassage.jp, {
+      end: () => { if (runRef.current === myRun) setActiveSentence(-1); }
+    });
+  }, [currentPassage, stopAudio]);
+
+  const playSentences = useCallback(() => {
+    if (!currentPassage) return;
+    stopAudio();
+    const myRun = ++runRef.current;
+    const segs = splitSentences(currentPassage.jp);
+    const step = (i) => {
+      if (runRef.current !== myRun) return;
+      if (i >= segs.length) { setActiveSentence(-1); return; }
+      const txt = segs[i].t.replace(/\n/g, ' ').trim();
+      if (!txt) { step(i+1); return; }
+      setActiveSentence(i);
+      speak(txt, {
+        end: () => {
+          if (runRef.current === myRun) {
+            setTimeout(() => step(i+1), 120);
+          }
+        }
+      });
     };
     step(0);
+  }, [currentPassage, stopAudio]);
+
+  useEffect(() => {
+    return () => {
+      try { window.speechSynthesis.cancel(); } catch(e) {}
+    };
+  }, []);
+
+  // ---- token click ----
+  const handleTokenClick = (idx, event) => {
+    const token = tokens[idx];
+    if (token.type !== 'vocab') return;
+    if (activeTokenIdx === idx) {
+      setActiveTokenIdx(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTooltipPos({
+      x: rect.left + rect.width / 2,
+      y: rect.top - 10
+    });
+    setActiveTokenIdx(idx);
   };
-  const pick=(qi,opt)=>{ if(picked[qi]!=null)return; const qq=p.q[qi]; const ok=opt===qq.a; setPicked(prev=>Object.assign({},prev,{[qi]:opt}));
-    try{ if(cp){ cp.recordAttempt('Reading', ok); if(!ok) cp.addMistake({section:'Reading', prompt:qq.q, sub:'', say:'', correct:qq.a, options:qq.opts, kind:'reading'}); } }catch(e){} };
-  const hasWords = p.vocab && p.vocab.length>0;
+
+  // ---- close tooltip ----
+  useEffect(() => {
+    const handler = (e) => {
+      if (activeTokenIdx !== null) {
+        const tooltipEl = document.getElementById('vocab-tooltip');
+        if (tooltipEl && tooltipEl.contains(e.target)) return;
+        const tokenEl = tokenRefs.current[activeTokenIdx];
+        if (tokenEl && tokenEl.contains(e.target)) return;
+        setActiveTokenIdx(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [activeTokenIdx]);
+
+  // ---- sentence ranges ----
+  const sentenceTokenRanges = useMemo(() => {
+    if (!currentPassage || tokens.length === 0) return [];
+    const segs = splitSentences(currentPassage.jp);
+    const ranges = [];
+    let tokenIdx = 0;
+    segs.forEach(seg => {
+      const start = seg.start;
+      const end = seg.start + seg.t.length;
+      const startIdx = tokens.findIndex(t => t.start >= start);
+      const endIdx = tokens.findIndex(t => t.end > end);
+      if (startIdx !== -1) {
+        const endIdxFinal = endIdx !== -1 ? endIdx : tokens.length;
+        ranges.push({ start: startIdx, end: endIdxFinal });
+      } else {
+        ranges.push({ start: -1, end: -1 });
+      }
+    });
+    return ranges;
+  }, [currentPassage, tokens]);
+
+  if (!enrichedPassages.length) {
+    return (
+      <div className="quiz-wrap" style={{maxWidth:'560px'}}>
+        <div className="qcard" style={{textAlign:'center'}}>
+          <div style={{fontSize:'44px',lineHeight:1}}>📖</div>
+          <h3 style={{fontSize:'21px',margin:'10px 0 4px'}}>No reading passages</h3>
+          <p className="muted" style={{fontSize:'14px',maxWidth:'420px',margin:'0 auto'}}>
+            This level doesn't have reading materials yet.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="quiz-wrap" style={{maxWidth:'900px'}}>
-      <div className="fc-bar">
-        <span className="fc-count">Passage <b>{idx+1}</b> / {list.length}</span>
-       <span className="r-tools">
-  {speechSupported && (
-    <button className="spk reading-speaker" aria-label="Listen to the passage" onClick={play}>
-      🔊
-    </button>
-  )}
-  <div className="rtoggle-group">
-    <button
-      className={cx('rtoggle', showRo && 'on')}
-      onClick={() => setShowRo(s => !s)}
-    >
-      Romaji
-      <span className="rtoggle-underline" />
-    </button>
-    <button
-      className={cx('rtoggle', showEn && 'on')}
-      onClick={() => setShowEn(s => !s)}
-    >
-      English
-      <span className="rtoggle-underline" />
-    </button>
-    {hasWords && (
-      <button
-        className={cx('rtoggle', showWords && 'on')}
-        onClick={() => setShowWords(s => !s)}
-      >
-        Words
-        <span className="rtoggle-underline" />
-      </button>
-    )}
-  </div>
-</span>
-      </div>
-      {/* <div className="muted" style={{fontSize:'12px',margin:'0 0 12px'}}>Tap 🔊 to hear it — the line being read lights up · <b>Romaji</b> = sound · <b>English</b> = meaning · <b>Words</b> = key vocabulary.</div> */}
-      {/* {list.length>1 && (
-        <div className="rtiers">
-          {['Easy','Medium','Exam-style'].map(function(tier){
-            const items=[]; list.forEach(function(pp,k){ const n=splitSentences(pp.jp).length; const t=n<=3?'Easy':(n<=5?'Medium':'Exam-style'); if(t===tier) items.push(k); });
-            if(!items.length) return null;
-            return <div className="rtier" key={tier}><span className="rtier-lab">{tier}</span>{items.map(function(k){ return <button key={k} className={cx('rtchip', idx===k&&'on')} onClick={function(){ if(idx===k)return; stopAudio(); setActive(-1); setIdx(k); setPicked({}); setShowEn(false); setShowRo(false); setShowWords(false); try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){} }}>{k+1}</button>; })}</div>;
-          })}
-        </div>
-      )} */}
-      <div className="reading-card">
-        <div className="rtitle"><span>{p.title}</span><span className={cx('rdiff', segs.length<=3?'easy':(segs.length<=5?'med':'hard'))}>{LEVEL_META.label} · {segs.length<=3?'Easy':(segs.length<=5?'Medium':'JLPT-style')}</span></div>
-        <p className="rjp">{segs.map(function(s,i){ return <span key={i} className={cx('rseg',active===i&&'on')}>{s.t}</span>; })}</p>
-        {showRo && <p className="rro">{p.romaji}</p>}
-        {showEn && <p className="ren">{p.en}</p>}
-        {showWords && hasWords && (
-          <div className="rwords">
-            {p.vocab.map(function(v,k){ return <div className="rword" key={k}><button className="rw-w" onClick={()=>speak(v.r||v.w)}>{v.w}</button><span className="rw-r">{v.r}</span><span className="rw-m">{v.m}</span></div>; })}
+    <div className="reading-wrap" style={{maxWidth:'780px', margin:'0 auto'}}>
+      {currentPassage && (
+        <>
+          {/* Top bar: page number (left) + controls (right) */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span className="muted" style={{ fontSize: '15px', fontWeight: 600 }}>
+              {/* {currentIndex + 1} */}
+            </span>
+            <span className="r-tools">
+              {speechSupported && (
+                <>
+                  <button className="spk reading-speaker" onClick={playFull} aria-label="Play full passage">🔊</button>
+                  <button className="spk reading-speaker" onClick={playSentences} aria-label="Play sentence by sentence">⏯</button>
+                </>
+              )}
+              <div className="rtoggle-group">
+                <button className={cx('rtoggle', showRomaji && 'on')} onClick={() => setShowRomaji(s => !s)}>
+                  Romaji <span className="rtoggle-underline"/>
+                </button>
+                <button className={cx('rtoggle', showEnglish && 'on')} onClick={() => setShowEnglish(s => !s)}>
+                  English <span className="rtoggle-underline"/>
+                </button>
+                <button className={cx('rtoggle', showReference && 'on')} onClick={() => setShowReference(s => !s)}>
+                  Reference <span className="rtoggle-underline"/>
+                </button>
+              </div>
+            </span>
           </div>
-        )}
-      </div>
-      {p.q.map((qq,qi)=>(
-        <div className="rq" key={qi}>
-          <div className="rq-q">{qq.q}</div>
-          <div className="opts">
-            {qq.opts.map((opt,k)=>{ const pk=picked[qi]; let st=''; if(pk!=null){ if(opt===qq.a)st='correct'; else if(opt===pk)st='wrong'; }
-              return <button key={k} className={cx('opt',st)} disabled={pk!=null} onClick={()=>pick(qi,opt)}><span className="k">{String.fromCharCode(65+k)}</span>{opt}</button>; })}
+
+          {/* Passage text */}
+          <div className="reading-card">
+            <p className="rjp" style={{whiteSpace:'pre-wrap', lineHeight:2.2}}>
+              {tokens.map((token, idx) => {
+                const isVocab = token.type === 'vocab';
+                const isActive = activeSentence !== -1 && idx >= sentenceTokenRanges[activeSentence]?.start && idx <= sentenceTokenRanges[activeSentence]?.end;
+                return (
+                  <span
+                    key={idx}
+                    ref={el => tokenRefs.current[idx] = el}
+                    className={cx(
+                      isVocab ? 'vocab-token' : '',
+                      isActive ? 'rseg on' : ''
+                    )}
+                    onClick={(e) => isVocab ? handleTokenClick(idx, e) : null}
+                    style={isVocab ? { cursor: 'pointer', borderBottom: '2px dotted var(--accent)', padding: '2px 0' } : {}}
+                  >
+                    {token.text}
+                  </span>
+                );
+              })}
+            </p>
+            {showRomaji && (
+              <div className="rro" style={{marginTop:12, paddingTop:12, borderTop:'1px solid var(--line)'}}>
+                {currentPassage.romaji}
+              </div>
+            )}
+            {showEnglish && (
+              <div className="ren" style={{marginTop:12, paddingTop:12, borderTop:'1px solid var(--line)'}}>
+                {currentPassage.en}
+              </div>
+            )}
           </div>
-          {picked[qi]!=null && qq.why && <div className={cx('rq-why', picked[qi]===qq.a?'ok':'no')}>{picked[qi]===qq.a?'✓ ':'✗ '}{qq.why}</div>}
-        </div>
-      ))}
-      <div className="fc-controls"><button className="icon-btn" onClick={()=>go(-1)} title="Previous">‹</button><button className="btn" onClick={()=>go(1)}>Next passage ›</button></div>
+
+          {/* Reference panel */}
+          {showReference && (
+            <div className="reading-ref" style={{marginTop:20, padding:16, background:'var(--bg-1)', borderRadius:'var(--r)', border:'1px solid var(--line)'}}>
+              {/* {currentPassage.vocabItems.length > 0 && (
+                <div style={{marginBottom:16}}>
+                  <div style={{fontWeight:700, marginBottom:8, color:'var(--accent-2)'}}>Vocabulary</div>
+                  <div style={{display:'grid', gap:6}}>
+                    {currentPassage.vocabItems.map(v => (
+                      <div key={v.id} style={{display:'flex', alignItems:'center', gap:10, fontSize:'14px'}}>
+                        <span style={{fontFamily:'var(--jp)', fontWeight:500}}>{v.jp}</span>
+                        <span style={{color:'var(--accent-2)', fontSize:'13px'}}>{v.kana}</span>
+                        <span style={{color:'var(--muted)'}}>{v.en}</span>
+                        <SpeakBtn text={v.kana} lg={false} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )} */}
+              {currentPassage.kanjiItems.length > 0 && (
+                <div style={{marginBottom:16}}>
+                  <div style={{fontWeight:700, marginBottom:8, color:'var(--accent-2)'}}>Kanji</div>
+                  <div style={{display:'grid', gap:6}}>
+                    {currentPassage.kanjiItems.map(k => (
+                      <div key={k.id} style={{display:'flex', alignItems:'center', gap:10, fontSize:'14px'}}>
+                        <span style={{fontFamily:'var(--jp)', fontSize:'18px'}}>{k.c}</span>
+                        <span style={{color:'var(--muted)'}}>{k.mean}</span>
+                        {k.kun && k.kun !== '—' && <span style={{fontSize:'13px', color:'var(--accent-2)'}}>kun: {displayReading(k.kun)}</span>}
+                        {k.on && k.on !== '—' && <span style={{fontSize:'13px', color:'var(--accent-2)'}}>on: {k.on}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {currentPassage.grammarItems.length > 0 && (
+                <div>
+                  <div style={{fontWeight:700, marginBottom:8, color:'var(--accent-2)'}}>Grammar</div>
+                  <div style={{display:'grid', gap:6}}>
+                    {currentPassage.grammarItems.map(g => (
+                      <div key={g.id} style={{display:'flex', alignItems:'center', gap:10, fontSize:'14px'}}>
+                        <span style={{fontWeight:600}}>{g.point}</span>
+                        <span style={{color:'var(--muted)'}}>{g.meaning}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tooltip */}
+          {activeTokenIdx !== null && tokens[activeTokenIdx] && tokens[activeTokenIdx].type === 'vocab' && (
+            <div
+              id="vocab-tooltip"
+              style={{
+                position:'fixed',
+                left: tooltipPos.x,
+                top: tooltipPos.y,
+                transform: 'translate(-50%, -100%)',
+                background: 'var(--bg-2)',
+                border: '1px solid var(--line-2)',
+                borderRadius: '12px',
+                padding: '12px 16px',
+                boxShadow: 'var(--shadow)',
+                zIndex: 1000,
+                minWidth: '180px',
+                pointerEvents: 'auto'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <span style={{fontFamily:'var(--jp)', fontSize:'20px', fontWeight:600}}>
+                  {tokens[activeTokenIdx].vocab.jp}
+                </span>
+                <SpeakBtn text={tokens[activeTokenIdx].vocab.kana} lg={false} />
+              </div>
+              <div style={{color:'var(--accent-2)', fontSize:'14px'}}>
+                {tokens[activeTokenIdx].vocab.kana}
+              </div>
+              <div style={{color:'var(--muted)', fontSize:'14px', marginTop:4}}>
+                {tokens[activeTokenIdx].vocab.en}
+              </div>
+            </div>
+          )}
+
+          {/* Bottom navigation: Prev / Next + counter */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 20 }}>
+            <button 
+              className="btn sm" 
+              onClick={() => { if (currentIndex > 0) { setSelectedId(enrichedPassages[currentIndex-1].id); setActiveTokenIdx(null); setActiveSentence(-1); stopAudio(); } }}
+              disabled={currentIndex === 0}
+            >
+              ‹ Previous
+            </button>
+            <span className="muted" style={{ fontSize: '14px', fontWeight: 500 }}>
+              {currentIndex + 1} / {total}
+            </span>
+            <button 
+              className="btn sm primary" 
+              onClick={() => { if (currentIndex < total - 1) { setSelectedId(enrichedPassages[currentIndex+1].id); setActiveTokenIdx(null); setActiveSentence(-1); stopAudio(); } }}
+              disabled={currentIndex === total - 1}
+            >
+              Next ›
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -3516,6 +3814,19 @@ const signOut = () => {
     window.location.hash = '#/';
   }, 500);
 };
+
+
+useEffect(() => {
+  // Pre-load voices as soon as the app mounts
+  ensureVoicesLoaded().then(() => {
+    // Warm up the speech engine with a silent utterance
+    try {
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+    } catch (e) {}
+  });
+}, []);
 
   // Render app immediately – no splash screen
   return (
