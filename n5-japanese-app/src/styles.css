@@ -811,8 +811,8 @@ section{scroll-margin-top:84px}
 .back-sentence{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);width:100%;max-width:400px;display:flex;flex-direction:column;align-items:center;gap:4px}
 .back-sentence .sentence-jp{font-family:var(--jp);font-size:1.15rem;font-weight:500;line-height:1.6}
 .back-sentence .sentence-kana{font-size:.9rem;color:var(--muted);font-family:var(--jp)}
-.back-sentence .sentence-en{font-size:5rem;color:var(--faint);margin-top:2px}
-.back-medium{font-size:5rem;font-weight:700;margin-bottom:2px}
+.back-sentence .sentence-en{font-size:3.5rem;color:var(--faint);margin-top:2px}
+.back-medium{font-size:3.5rem;font-weight:700;margin-bottom:2px}
 .back-readings{font-family:var(--jp);font-size:1rem;color:var(--accent-2);font-weight:500;margin:4px 0 2px;letter-spacing:.02em}
 .back-meaning{font-size:1.5rem;font-weight:700;margin-bottom:2px}
 .sentence-controls{display:flex;align-items:center;gap:12px;justify-content:center;margin-top:8px;flex-wrap:wrap}
