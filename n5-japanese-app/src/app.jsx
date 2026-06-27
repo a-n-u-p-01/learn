@@ -2592,7 +2592,6 @@ function splitSentences(text){
 function Reading({ cp }) {
   const passages = READING;
 
-  // Particles to exclude from clickability/hover
   const PARTICLE_WORDS = new Set([
     'は', 'が', 'の', 'に', 'を', 'と', 'も', 'で',
     'から', 'へ', 'まで', 'や', 'か', 'ね', 'よ', 'ぞ', 'ぜ', 'わ'
@@ -2602,13 +2601,13 @@ function Reading({ cp }) {
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [showEnglish, setShowEnglish] = useState(false);
 
-  // Tooltip state
   const [activeTokenKey, setActiveTokenKey] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const tokenRefs = useRef({});
   const tooltipRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
+  const containerRef = useRef(null); // ← new ref for scrolling
 
   const [selectedOptions, setSelectedOptions] = useState([]);
   const [answered, setAnswered] = useState(false);
@@ -2619,13 +2618,24 @@ function Reading({ cp }) {
   const currentQuestion = questions[currentQuestionIdx] || null;
   const totalQuestions = questions.length;
 
-  // ---- Progress ----
   const readingProgress = cp.prog.reading || {};
   const passageProgress = readingProgress[currentPassage?.id] || null;
   const isPassageCompleted = passageProgress?.completed || false;
 
-  // ---- Load saved progress ----
+  // ---- On mount: jump to first uncompleted ----
   useEffect(() => {
+    const firstUncompleted = passages.findIndex(p => !(readingProgress[p.id]?.completed));
+    if (firstUncompleted !== -1 && firstUncompleted !== currentPassageIdx) {
+      setCurrentPassageIdx(firstUncompleted);
+    }
+  }, []);
+
+  // ---- Load saved progress ----
+  const prevPassageIdxRef = useRef(currentPassageIdx);
+  useEffect(() => {
+    const passageChanged = prevPassageIdxRef.current !== currentPassageIdx;
+    prevPassageIdxRef.current = currentPassageIdx;
+
     if (currentPassage && passageProgress) {
       setSelectedOptions(passageProgress.answers || []);
       setAnswered(passageProgress.completed || false);
@@ -2633,7 +2643,13 @@ function Reading({ cp }) {
       setSelectedOptions(new Array(totalQuestions).fill(null));
       setAnswered(false);
     }
-    setCurrentQuestionIdx(0);
+
+    if (passageChanged) {
+      setCurrentQuestionIdx(0);
+      // ---- Scroll to top when passage changes ----
+      containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     setTooltipVisible(false);
     setActiveTokenKey(null);
   }, [currentPassageIdx, currentPassage, passageProgress, totalQuestions]);
@@ -2678,7 +2694,6 @@ function Reading({ cp }) {
     return { question: qTokens, options: optTokens };
   }, [currentQuestion]);
 
-  // ---- Speak ----
   const speakPassage = useCallback(() => {
     if (!currentPassage) return;
     speak(currentPassage.jp);
@@ -2689,23 +2704,19 @@ function Reading({ cp }) {
     speak(questionText);
   }, []);
 
-  // ---- Show / hide tooltip ----
+  // ---- Tooltip ----
   const showTooltip = (token, key, event) => {
     if (token.type !== 'dict') return;
     const rect = event.currentTarget.getBoundingClientRect();
     let x = rect.left + rect.width / 2;
     let y = rect.top - 10;
     const tooltipWidth = 200;
-
     if (y < 80) y = rect.bottom + 10;
     if (x + tooltipWidth / 2 > window.innerWidth - 20) x = window.innerWidth - 20 - tooltipWidth / 2;
     if (x - tooltipWidth / 2 < 20) x = 20 + tooltipWidth / 2;
-
     setTooltipPos({ x, y });
     setActiveTokenKey(key);
     setTooltipVisible(true);
-
-    // Cancel any pending hide
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
@@ -2726,15 +2737,11 @@ function Reading({ cp }) {
     }
   };
 
-  // ---- Token click (also plays audio) ----
   const handleTokenClick = (token, key, event) => {
-    event.stopPropagation(); // Prevent option selection
+    event.stopPropagation();
     if (token.type !== 'dict') return;
-
     const textToSpeak = token.entry.kana || token.text;
     speak(textToSpeak);
-
-    // If tooltip already visible for this token, close it; else show it
     if (activeTokenKey === key && tooltipVisible) {
       setTooltipVisible(false);
       setActiveTokenKey(null);
@@ -2743,7 +2750,6 @@ function Reading({ cp }) {
     }
   };
 
-  // ---- Close tooltip on outside click ----
   useEffect(() => {
     const handler = (e) => {
       if (!tooltipVisible) return;
@@ -2758,7 +2764,7 @@ function Reading({ cp }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [tooltipVisible, activeTokenKey]);
 
-  // ---- Option selection ----
+  // ---- Option selection (no auto‑jump) ----
   const selectOption = (questionIdx, optionIdx) => {
     if (answered || isPassageCompleted) return;
     if (selectedOptions[questionIdx] !== null && selectedOptions[questionIdx] !== undefined) return;
@@ -2787,24 +2793,6 @@ function Reading({ cp }) {
         ...prev,
         reading,
       }));
-
-      // ---- Auto‑jump to next uncompleted passage ----
-      setTimeout(() => {
-        let nextUncompleted = -1;
-        for (let i = currentPassageIdx + 1; i < totalPassages; i++) {
-          const p = passages[i];
-          const isCompleted = (cp.prog.reading || {})[p.id]?.completed || false;
-          if (!isCompleted) {
-            nextUncompleted = i;
-            break;
-          }
-        }
-        if (nextUncompleted !== -1) {
-          goToPassage(nextUncompleted);
-        } else {
-          alert('🎉 You’ve completed all passages!');
-        }
-      }, 800);
     }
   };
 
@@ -2828,9 +2816,9 @@ function Reading({ cp }) {
     setCurrentPassageIdx(idx);
     setTooltipVisible(false);
     setActiveTokenKey(null);
+    // Scroll will happen automatically via the useEffect above
   };
 
-  // ---- Render tokens ----
   const renderTokens = (tokens, baseKey) => {
     return tokens.map((token, idx) => {
       const key = `${baseKey}-${idx}`;
@@ -2890,7 +2878,7 @@ function Reading({ cp }) {
   const correctIdx = currentQuestion?.answer;
 
   return (
-    <div className="reading-wrap" style={{ maxWidth: '780px', margin: '0 auto' }}>
+    <div className="reading-wrap" ref={containerRef} style={{ maxWidth: '780px', margin: '0 auto', scrollMarginTop: '80px' }}>
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1, padding: '4px 0', scrollbarWidth: 'thin' }}>
@@ -2943,7 +2931,7 @@ function Reading({ cp }) {
         )}
       </div>
 
-      {/* Question section */}
+      {/* Questions */}
       {totalQuestions > 0 && (
         <div style={{ marginTop: 24 }}>
           <div className="shead" style={{ marginBottom: 12 }}>
@@ -3003,6 +2991,33 @@ function Reading({ cp }) {
               <button className="btn primary" disabled={currentQuestionIdx === totalQuestions - 1 || !isQuestionAnswered} onClick={nextQuestion}>Next ›</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Next passage button */}
+      {answered && isPassageCompleted && (
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <button
+            className="btn primary"
+            onClick={() => {
+              let nextUncompleted = -1;
+              for (let i = currentPassageIdx + 1; i < totalPassages; i++) {
+                const p = passages[i];
+                const isCompleted = (cp.prog.reading || {})[p.id]?.completed || false;
+                if (!isCompleted) {
+                  nextUncompleted = i;
+                  break;
+                }
+              }
+              if (nextUncompleted !== -1) {
+                goToPassage(nextUncompleted);
+              } else {
+                alert('🎉 You’ve completed all passages!');
+              }
+            }}
+          >
+            {currentPassageIdx < totalPassages - 1 ? 'Next passage →' : 'All done! 🎉'}
+          </button>
         </div>
       )}
 
