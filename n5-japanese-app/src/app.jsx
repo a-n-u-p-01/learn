@@ -2473,7 +2473,7 @@ function Flashcards({ cp, deckId }) {
           </div>
           <div className="fc-face fc-back">
             <span className="tag">{card.tag}</span>
-            {deckId !== 'grammar' && <div className="back-meaning">{card.back}</div>}
+            {deckId !== 'grammar' && <div className="back-medium">{card.back}</div>}
             {deckId !== 'grammar' &&card.readings && <div className="back-readings">{card.readings}</div>}
 
             {deckId !== 'grammar' && showSentence && card.sentenceJp && (
@@ -2780,7 +2780,7 @@ function Review({ cp, deckId }) {
               </div>
               <div className="fc-face fc-back">
                 <span className="tag">{card.tag}</span>
-                {!(deckId === 'grammar') && <div className="back-meaning">{card.back}</div>}
+                {!(deckId === 'grammar') && <div className="back-medium">{card.back}</div>}
                 {!(deckId === 'grammar') && card.readings && <div className="back-readings">{card.readings}</div>}
                 {!(deckId === 'grammar') && showSentence && card.sentenceJp && (
                   <div className="back-sentence">
@@ -2791,8 +2791,8 @@ function Review({ cp, deckId }) {
                 )}
                 {(deckId === 'grammar') && <>
                   <div className="sentence-en">{card.back}</div>
-                  <div className="back-readings">{card.sentenceJp}</div>
-                  <div className="sentence-en">{card.sentenceKana}</div>
+                  <div className="back-meaning">{card.sentenceJp}</div>
+                  <div className="sentence-kana">{card.sentenceKana}</div>
                   <div className="sentence-en">{card.sentenceEn}</div>
                 </>}
                 <span className="hint">tap to flip back</span>
