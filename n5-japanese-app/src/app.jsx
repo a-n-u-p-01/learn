@@ -238,6 +238,18 @@ function useCloudProgress(user, level) {
   const signedIn = !!(user && user.uid);
   const uid = signedIn ? user.uid : null;
 
+  const setDaily = (key, value) => commit(prev => {
+  const t = dayStr();
+  const daily = Object.assign({}, prev.daily || {});
+  const day = Object.assign({}, daily[t] || {});
+  day[key] = value;
+  daily[t] = day;
+  // Keep only last 7 days
+  const keys = Object.keys(daily).sort();
+  while (keys.length > 7) { delete daily[keys.shift()]; }
+  return Object.assign({}, prev, { daily });
+});
+
   // ---- Synchronous local storage read on every render ----
   const getLocalDoc = () => {
     const key = signedIn ? userKey(uid) : GUEST_KEY;
@@ -636,6 +648,7 @@ const updateProgress = useCallback((updater) => {
     recordBatch,
     connectionStatus,
     updateProgress,
+    setDaily,
   };
 }
 /* ---------- voice (Web Speech API) ---------- */
@@ -1132,208 +1145,440 @@ function NextLevel({pct, setLevel}){
     </section>
   );
 }
-function TodayPanel({prog, name, setView, toggleDaily, setExamDate}){
-  const srs=prog.srs||{};
-  // Find the deck with the most due cards
-let maxDueDeck = null;
-let maxDue = 0;
-DECKS.forEach(([id]) => {
-  const deckSrs = srs[id] || {};
-  const due = dueCountInDeck(deckSrs);
-  if (due > maxDue) {
-    maxDue = due;
-    maxDueDeck = id;
-  }
-});
-// Find the weakest section that has a quiz mode
-const modeMap = {
-  'Kana': 'kana',
-  'Vocabulary': 'vocab',
-  'Kanji': 'kanji',
-  'Grammar': 'grammar',
-  'Listening': 'listen'
-};
+function TodayPanel({ prog, name, setView, toggleDaily, setExamDate }) {
+  const srs = prog.srs || {};
+  const today = dayStr();
+  const daily = (prog.daily || {})[today] || {};
 
-let weakestMode = 'vocab'; // default
-let lowestAccuracy = 101;
+  // --- 1. Compute core numbers ---
+  const due = dueCount(srs);
+  const totalRemNew = totalRemainingNew(srs);
+  const newDone = newDoneTodayAll(srs, today);
+  const baseRem = totalRemNew + newDone;
+  const mDays = maxDeckDays(srs);
+  const exam = prog.examDate || '';
+  const dToExam = exam ? daysBetween(today, exam) : null;
 
-const ss = prog.secStats || {};
-for (const [section, arr] of Object.entries(ss)) {
-  if (arr.length === 0) continue;
-  const accuracy = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 100);
-  if (accuracy < lowestAccuracy && modeMap[section]) {
-    lowestAccuracy = accuracy;
-    weakestMode = modeMap[section];
-  }
-}
-  const today=dayStr();
-  const daily=(prog.daily||{})[today]||{};
-  const due=dueCount(srs);
-  const exam=prog.examDate||'';
-  const totalRemNew=totalRemainingNew(srs);            // cards still to introduce (all decks)
-  const newDone=newDoneTodayAll(srs, today);           // new cards introduced today (all decks)
-  const baseRem=totalRemNew+newDone;                   // remaining as of the start of today (keeps target stable through the day)
-  const mDays=maxDeckDays(srs);                         // fastest possible at NEW_PER_DAY/deck
-  const focus=DECKS.find(function(d){ return remainingNewInDeck(srs,d[0])>0; }) || null;
-  // adaptive daily NEW target: finish introducing in the first ~75% of the time to the exam,
-  // leaving the rest to review. With no exam, hold a gentle steady pace.
-  let dToExam=null, introduceDays=null, targetNew=0, feasible=true;
-  if(baseRem>0){
-    if(exam){
-      dToExam=daysBetween(today,exam);
-      // finish introducing new cards by (exam − REVIEW_BUFFER), leaving a fixed review run-up.
-      // dividing remaining by the (shrinking) days-until-that-deadline finishes exactly on time,
-      // but never go below a comfortable floor — a far date just means you finish early.
-      introduceDays=Math.max((dToExam>0?dToExam:0)-REVIEW_BUFFER_DAYS,1);
-      targetNew=Math.min(baseRem, Math.max(MIN_NEW_PER_DAY, Math.ceil(baseRem/introduceDays)));
-      feasible = dToExam>0 && mDays<=introduceDays;     // per-deck cap must allow finishing in time
+  // --- 2. Compute adaptive targetNew ---
+  let targetNew = 0, feasible = true, finishInDays = 0, learnByDate = '', slack = 0, minDate = '';
+  if (baseRem > 0) {
+    if (exam && dToExam !== null) {
+      const introduceDays = Math.max((dToExam > 0 ? dToExam : 0) - REVIEW_BUFFER_DAYS, 1);
+      targetNew = Math.min(baseRem, Math.max(MIN_NEW_PER_DAY, Math.ceil(baseRem / introduceDays)));
+      feasible = dToExam > 0 && mDays <= introduceDays;
     } else {
-      targetNew=Math.min(NEW_PER_DAY, baseRem);
+      targetNew = Math.min(NEW_PER_DAY, baseRem);
+    }
+    finishInDays = targetNew > 0 ? Math.ceil(baseRem / targetNew) : 0;
+    learnByDate = addDays(today, finishInDays);
+    slack = (exam && dToExam !== null) ? (dToExam - finishInDays) : 0;
+    minDate = exam ? addDays(today, mDays + REVIEW_BUFFER_DAYS) : '';
+  }
+
+  const newTaskDone = totalRemNew === 0 || newDone >= targetNew;
+
+  // --- 3. Find best decks for review and new cards ---
+  let maxDueDeck = null, maxDue = 0;
+  let focusDeck = null;
+  DECKS.forEach(([id]) => {
+    const deckSrs = srs[id] || {};
+    const due = dueCountInDeck(deckSrs);
+    if (due > maxDue) { maxDue = due; maxDueDeck = id; }
+    if (remainingNewInDeck(srs, id) > 0 && !focusDeck) focusDeck = id;
+  });
+
+  // --- 4. Weakest quiz mode ---
+  const modeMap = { 'Kana': 'kana', 'Vocabulary': 'vocab', 'Kanji': 'kanji', 'Grammar': 'grammar', 'Listening': 'listen' };
+  let weakestMode = 'vocab', lowestAccuracy = 101;
+  const ss = prog.secStats || {};
+  for (const [section, arr] of Object.entries(ss)) {
+    if (arr.length === 0) continue;
+    const accuracy = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 100);
+    if (accuracy < lowestAccuracy && modeMap[section]) {
+      lowestAccuracy = accuracy;
+      weakestMode = modeMap[section];
     }
   }
-  const newTaskDone = totalRemNew===0 || newDone>=targetNew;
-  const finishInDays = targetNew>0 ? Math.ceil(baseRem/targetNew) : 0;     // days to learn everything at this pace
-  const noExamDays = finishInDays;
-  const learnByDate = addDays(today, finishInDays);                        // the date you'll have learned all new cards
-  const slack = (exam && dToExam!=null) ? (dToExam - finishInDays) : 0;    // review days between finishing and the exam
-  const minDate = exam ? addDays(today, mDays + REVIEW_BUFFER_DAYS) : '';  // earliest date N5 is achievable from here
- const tasks = [
-  {k:'rev', label: due>0?('Clear '+due+' due review'+(due===1?'':'s')):'Reviews — all clear', done: due===0, go:'practice', gsub:'', gsub2: maxDueDeck || ''},  totalRemNew===0
-    ? {k:'new', label:'All cards introduced — review only', done:true, go:'practice', gsub:'', gsub2:''}
-    : {k:'new', label:'Learn '+targetNew+' new card'+(targetNew===1?'':'s')+(focus?(' · start with '+focus[1]):'')+' · '+Math.min(newDone,targetNew)+'/'+targetNew, done:newTaskDone, go:'practice', gsub:'review', gsub2: focus ? focus[0] : ''},
-  {k:'quiz', label:'Do one quiz', done:!!daily.quiz, toggle:true, go:'practice', gsub:'quiz', gsub2: weakestMode},
-  {k:'read', label:'One reading or listening', done:!!daily.read, toggle:true, go:'practice', gsub:'reading', gsub2:''}];
-  const doneN=tasks.filter(function(t){return t.done;}).length;
-  const allDone=doneN===tasks.length;
+
+  // --- 5. Mistakes ---
+  const mistakes = prog.mistakes || [];
+  const hasMistakes = mistakes.length > 0;
+
+  // --- 6. Reading progress (all passages completed?) ---
+  const readingProgress = prog.reading || {};
+  const allPassagesCompleted = READING.every(p => readingProgress[p.id]?.completed === true);
+  const readingDone = allPassagesCompleted; // or check if at least one passage was read today? We'll keep simple.
+
+  // --- 7. Mock test progress ---
+  const mockDone = !!daily.mock;
+
+  // --- 8. Build task list ---
+  const tasks = [];
+
+  // Priority 1: Review
+  const reviewDone = due === 0;
+  tasks.push({
+    id: 'review',
+    label: due > 0 ? `Clear ${due} due review${due === 1 ? '' : 's'}` : 'Reviews — all clear',
+    done: reviewDone,
+    progress: due > 0 ? { done: 0, total: due } : null, // we don't track progress in this task, just done/not
+    action: () => setView('practice', 'review', maxDueDeck || ''),
+    priority: 1,
+    autoComplete: reviewDone,
+    type: 'review'
+  });
+
+  // Priority 2: New cards (only if review is done or no due)
+  const newCardsDone = totalRemNew === 0 || newDone >= targetNew;
+  if (totalRemNew > 0 && (reviewDone || due === 0)) {
+    tasks.push({
+      id: 'new',
+      label: `Learn ${Math.min(targetNew, totalRemNew)} new card${targetNew === 1 ? '' : 's'}${focusDeck ? ' · start with ' + DECKS.find(d => d[0] === focusDeck)?.[1] || '' : ''} · ${Math.min(newDone, targetNew)}/${targetNew}`,
+      done: newCardsDone,
+      progress: { done: Math.min(newDone, targetNew), total: Math.min(targetNew, totalRemNew) },
+      action: () => setView('practice', 'review', focusDeck || ''),
+      priority: 2,
+      autoComplete: newCardsDone,
+      type: 'new'
+    });
+  } else if (totalRemNew === 0) {
+    // All cards introduced
+    tasks.push({
+      id: 'new',
+      label: 'All cards introduced — review only',
+      done: true,
+      progress: null,
+      action: null,
+      priority: 2,
+      autoComplete: true,
+      type: 'new'
+    });
+  }
+
+  // Priority 3: Quiz (only if new cards are done or no new cards left)
+  if (newCardsDone || totalRemNew === 0) {
+    const quizDone = !!daily.quiz;
+    tasks.push({
+      id: 'quiz',
+      label: `Do one quiz${weakestMode ? ' (' + weakestMode + ')' : ''}`,
+      done: quizDone,
+      progress: null,
+      action: () => setView('practice', 'quiz', weakestMode),
+      priority: 3,
+      autoComplete: false,
+      toggle: true,
+      type: 'quiz'
+    });
+  }
+
+  // Priority 4: Reading
+  const readDone = !!daily.read;
+  tasks.push({
+    id: 'read',
+    label: 'Read one passage',
+    done: readDone,
+    progress: null,
+    action: () => setView('practice', 'reading', ''),
+    priority: 4,
+    autoComplete: false,
+    toggle: true,
+    type: 'read'
+  });
+
+  // Priority 5: Mistakes (if any)
+  if (hasMistakes) {
+    const mistakesDone = mistakes.length === 0;
+    tasks.push({
+      id: 'mistakes',
+      label: `Review ${mistakes.length} mistake${mistakes.length === 1 ? '' : 's'}`,
+      done: mistakesDone,
+      progress: { done: 0, total: mistakes.length }, // we can't track incremental clearing; just show total
+      action: () => setView('practice', 'mistakes', ''),
+      priority: 5,
+      autoComplete: mistakesDone,
+      type: 'mistakes'
+    });
+  }
+
+  // Priority 6: Mock test (if exam is near, or if user has mock history)
+  const showMock = (exam && dToExam !== null && dToExam <= 60) || (prog.mockHistory && prog.mockHistory.length > 0);
+  if (showMock) {
+    tasks.push({
+      id: 'mock',
+      label: mockDone ? 'Mock test completed' : 'Take a mock test',
+      done: mockDone,
+      progress: null,
+      action: () => setView('practice', 'mock', ''),
+      priority: 6,
+      autoComplete: false,
+      toggle: true,
+      type: 'mock'
+    });
+  }
+
+  // --- 9. Compute done count and allDone ---
+  const doneN = tasks.filter(t => t.done).length;
+  const allDone = doneN === tasks.length;
+
+  // --- 10. Render ---
   return (
     <div className="today">
       <div className="today-h">
-        <div><div className="ey">{allDone?'Today · complete 🎉':"Today's plan"}</div><h3>{allDone?('Nice work, '+name+'!'):('Hi '+name+' — '+doneN+' of '+tasks.length+' done')}</h3></div>
-        <div className={cx('tring',allDone&&'full')}>{doneN}/{tasks.length}</div>
+        <div>
+          <div className="ey">{allDone ? 'Today · complete 🎉' : "Today's plan"}</div>
+          <h3>{allDone ? ('Nice work, ' + name + '!') : ('Hi ' + name + ' — ' + doneN + ' of ' + tasks.length + ' done')}</h3>
+        </div>
+        <div className={cx('tring', allDone && 'full')}>{doneN}/{tasks.length}</div>
       </div>
       <div className="tasklist">
-        {tasks.map(function(t){ return (
-          <div className={cx('task',t.done&&'done')} key={t.k}>
-            <button className="tck" disabled={!t.toggle} onClick={t.toggle?function(){toggleDaily(t.k);}:undefined} aria-label={t.done?'done':'mark done'}>{t.done?'✓':''}</button>
-    <span className="tlb" onClick={function(){ setView(t.go, t.gsub, t.gsub2 || ''); }}>{t.label}</span>
-<button className="tgo" onClick={function(){ setView(t.go, t.gsub, t.gsub2 || ''); }} aria-label="open">→</button>
+        {tasks.map(t => (
+          <div className={cx('task', t.done && 'done')} key={t.id}>
+            <button
+              className="tck"
+              disabled={!t.toggle && !t.autoComplete}
+              onClick={() => {
+                if (t.toggle) toggleDaily(t.id);
+                else if (t.autoComplete) { /* do nothing, but maybe trigger re‑evaluation */ }
+              }}
+              aria-label={t.done ? 'done' : 'mark done'}
+            >
+              {t.done ? '✓' : ''}
+            </button>
+            <span
+              className="tlb"
+              onClick={() => {
+                if (t.action) t.action();
+              }}
+              style={{ cursor: t.action ? 'pointer' : 'default' }}
+            >
+              {t.label}
+              {t.progress && (
+                <span style={{ marginLeft: '8px', fontSize: '12px', color: 'var(--muted)' }}>
+                  ({t.progress.done}/{t.progress.total})
+                </span>
+              )}
+            </span>
+            <button
+              className="tgo"
+              onClick={() => {
+                if (t.action) t.action();
+              }}
+              aria-label="open"
+              style={{ visibility: t.action ? 'visible' : 'hidden' }}
+            >
+              →
+            </button>
           </div>
-        ); })}
+        ))}
       </div>
       <div className="pace">
-        {allDone
-          ? <span className="pace-ok">✓ Today's plan done — you're on pace. Come back tomorrow! 🎉</span>
-          : (totalRemNew===0
-              ? <span>🎉 You've learned all {TOTAL_CARDS} cards — keep clearing reviews to lock them in.</span>
-              : (exam
-                  ? (feasible
-                      ? (slack>=30
-                          ? <span> <b className="ontrack">✓ On track — ahead of schedule.</b> <b>Stay on your daily study plan to complete {LEVEL_META.label} by {fmtYmd(learnByDate)}.</b> </span>
-                          : <span> <b className="ontrack">✓ On track for {fmtYmd(exam)}.</b> <b>Stick to your daily plan of <b>{targetNew} new/day</b> to finish {LEVEL_META.label} by <b>{fmtYmd(learnByDate)}</b>. This leaves <b>{slack}</b> day{slack === 1 ? '' : 's'} to review before the exam.</b> </span>)
-                      : <span><b className="behind">⚠ That date is too soon.</b> From today, {LEVEL_META.label} needs about <b>{mDays+REVIEW_BUFFER_DAYS} days</b> (you can learn at most {NEW_PER_DAY} new per deck a day). Pick an exam date on or after <b>{fmtYmd(minDate)}</b>.</span>)
-                  : <span>At <b>{targetNew} new cards/day</b> you'll learn the remaining <b>{totalRemNew}</b> in about <b>{noExamDays} days</b>. Set a target exam date below for a plan built around it.</span>))
-        }
-
+        {allDone ? (
+          <span className="pace-ok">✓ Today's plan done — you're on pace. Come back tomorrow! 🎉</span>
+        ) : (
+          <span>
+            {totalRemNew === 0 ? (
+              <span>🎉 You've learned all {TOTAL_CARDS} cards — keep clearing reviews to lock them in.</span>
+            ) : exam && dToExam !== null ? (
+              feasible ? (
+                slack >= 30 ? (
+                  <span>
+                    <b className="ontrack">✓ On track — ahead of schedule.</b>{' '}
+                    <b>Stay on your daily study plan to complete {LEVEL_META.label} by {fmtYmd(learnByDate)}.</b>
+                  </span>
+                ) : (
+                  <span>
+                    <b className="ontrack">✓ On track for {fmtYmd(exam)}.</b>{' '}
+                    <b>Stick to your daily plan of <b>{targetNew} new/day</b> to finish {LEVEL_META.label} by <b>{fmtYmd(learnByDate)}</b>. This leaves <b>{slack}</b> day{slack === 1 ? '' : 's'} to review before the exam.</b>
+                  </span>
+                )
+              ) : (
+                <span>
+                  <b className="behind">⚠ That date is too soon.</b> From today, {LEVEL_META.label} needs about <b>{mDays + REVIEW_BUFFER_DAYS} days</b> (you can learn at most {NEW_PER_DAY} new per deck a day). Pick an exam date on or after <b>{fmtYmd(minDate)}</b>.
+                </span>
+              )
+            ) : (
+              <span>
+                At <b>{targetNew} new cards/day</b> you'll learn the remaining <b>{totalRemNew}</b> in about <b>{finishInDays} days</b>. Set a target exam date below for a plan built around it.
+              </span>
+            )}
+          </span>
+        )}
         <div className="examrow">
-          <label>Target exam date{exam&&dToExam!=null?(dToExam>0?(' · '+dToExam+' days to go'):' · today'):''}</label>
-          <input type="date" className="dateinp" value={exam} onChange={function(e){ setExamDate(e.target.value); }}/>
-          {exam && <button className="swlink" onClick={function(){ setExamDate(''); }}>clear</button>}
+          <label>
+            Target exam date{exam && dToExam !== null ? (dToExam > 0 ? ' · ' + dToExam + ' days to go' : ' · today') : ''}
+          </label>
+          <input
+            type="date"
+            className="dateinp"
+            value={exam}
+            onChange={e => setExamDate(e.target.value)}
+          />
+          {exam && <button className="swlink" onClick={() => setExamDate('')}>clear</button>}
         </div>
       </div>
     </div>
   );
 }
-const Home =React.memo(function Home({setView,name,prog,setGoal,toggleDaily,setExamDate,setLevel,levelDue,user,onSignIn}){
-  const L = LEVEL_META;
-  const known = prog.known||{};
-  const knownCount = Object.keys(known).reduce((a,k)=>a+Object.keys(known[k]||{}).length,0);
-  const pct = Math.round(knownCount/Math.max(TOTAL_CARDS,1)*100);
-  const dueN = dueCount(prog.srs);
-  const areas = [].concat(
-    L.hasKana ? [['Kana', (Object.keys(known.hira||{}).length+Object.keys(known.kata||{}).length), KANA_HIRA.length+KANA_KATA.length]] : [],
-    [['Kanji', Object.keys(known.kanji||{}).length, KANJI.length],
-     ['Vocabulary', Object.keys(known.vocab||{}).length, VOCAB.length],
-     ['Grammar', Object.keys(known.grammar||{}).length, GRAMMAR.length]]
-  );
-  const stats = [].concat(
-    L.hasKana ? [[String(KANA_HIRA.length+KANA_KATA.length),'kana characters']] : [],
-    [[String(KANJI.length),'kanji'],
-     [String(VOCAB.length),'vocabulary words'],
-     [String(GRAMMAR.length),'grammar points']]
-  );
+function ProgressCard({ prog, setView }) {
+  const known = prog.known || {};
+  const knownCount = Object.keys(known).reduce((a, k) => a + Object.keys(known[k] || {}).length, 0);
+  const mastery = Math.min(100, Math.round(knownCount / Math.max(TOTAL_CARDS, 1) * 100));
+
+  const rd = readinessScore(prog);
+
+  const ss = prog.secStats || {};
+  const weakRows = Object.keys(ss)
+    .filter(k => (ss[k] || []).length > 0)
+    .map(k => {
+      const arr = ss[k];
+      const pct = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 100);
+      return [k, pct];
+    })
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, 3);
+
+  const modeMap = { 'Kana': 'kana', 'Vocabulary': 'vocab', 'Kanji': 'kanji', 'Grammar': 'grammar', 'Listening': 'listen' };
+
   return (
-    <div>
-      {!user && <section className="wrap" style={{paddingTop:'18px'}}><GuestSyncBanner onSignIn={onSignIn}/></section>}
-      <section className="hero wrap">
-        <span className="kicker">● {L.tag}</span>
-       {!user && (
-  <>
-    {L.id === 'n5' ? (
-      <h1>
-        Learn Japanese
-        <br />
-        from <span className="jp">ゼロ</span> to N5.
-      </h1>
-    ) : (
-      <h1>
-        Level up to
-        <br />
-        JLPT <span className="jp">{L.label}</span>.
-      </h1>
-    )}
-
-    <p>
-      A calm, focused place to master the JLPT {L.label} faster: read the
-      reference once, then lock it in with flashcards, quizzes, and mock exams
-      — with audio, mistake tracking, and progress synced everywhere.
-    </p>
-  </>
-)}  <TodayPanel prog={prog} name={name} setView={setView} toggleDaily={toggleDaily} setExamDate={setExamDate}/>
-        <OtherLevels levelDue={levelDue} level={L.id} setLevel={setLevel}/>
-        <StreakCard prog={prog} setGoal={setGoal}/>
-        <div className="cta">
-          {dueN>0
-            ? <button className="btn primary" onClick={()=>setView('practice')}>🧠 Review {dueN} due →</button>
-            : <button className="btn primary" onClick={()=>setView('practice')}>Start practicing →</button>}
-          <button className="btn ghost" onClick={()=>setView(L.hasKana?'kana':'kanji')}>Browse {L.hasKana?'kana':'kanji'}</button>
+    <div className="mastery" style={{ padding: 'clamp(16px, 3vw, 24px)' }}>
+      <div className="mhead" style={{ marginBottom: 12 }}>
+        <div>
+          <div className="ey">Your progress</div>
+          <h2 style={{ fontSize: 'clamp(20px, 3vw, 28px)' }}>Mastery &amp; readiness</h2>
         </div>
-        <div className="stat-row">{stats.map(([n,l])=>(<div className="stat" key={l}><b>{n}</b><span>{l}</span></div>))}</div>
-      </section>
-
-      <MasteryPanel pct={pct} known={knownCount} total={TOTAL_CARDS} areas={areas}/>
-      <ReadinessPanel prog={prog}/>
-      <WeakAreas prog={prog} setView={setView}/>
-
-      <section className="block wrap">
-        <div className="shead"><div><div className="ey">How to use this</div><h2>The fastest path to {L.label}</h2>
-          <p>Reading alone is slow. The proven route is read once, then test yourself — active recall is what makes it stick.</p></div></div>
-        <div className="steps">
-          {L.hasKana
-            ? <div className="step"><span className="num">1</span><div><h4>Learn the kana first</h4><p>Hiragana and katakana are the foundation. Tap any character to hear it, and drill until you can read instantly.</p></div></div>
-            : <div className="step"><span className="num">1</span><div><h4>Drill your kanji</h4><p>{L.label} adds many new kanji. Review them daily so reading stays fast and effortless.</p></div></div>}
-          <div className="step"><span className="num">2</span><div><h4>Build vocabulary &amp; kanji daily</h4><p>Use the flashcards and quizzes every day. A little, often, beats cramming — and your progress follows you across devices.</p></div></div>
-          <div className="step"><span className="num">3</span><div><h4>Glue it together with grammar</h4><p>Grammar turns words into sentences. Learn the patterns, then hear them in the example sentences.</p></div></div>
+        <div className="mpct" style={{ fontSize: 'clamp(32px, 6vw, 48px)' }}>
+          {mastery}<span>%</span>
         </div>
-        
-      </section>
+      </div>
+      <div className="pbar big" style={{ height: 8, marginBottom: 8 }}>
+        <i style={{ width: Math.max(mastery, 2) + '%' }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--muted)', marginBottom: 16 }}>
+        <span>Exam readiness: <b style={{ color: 'var(--fg)' }}>{rd.score}%</b></span>
+        <span>{knownCount} / {TOTAL_CARDS} cards</span>
+      </div>
 
-      <section className="block wrap" style={{paddingTop:0}}>
-        <div className="grid-3">
-          {L.hasKana && <div className="ocard" onClick={()=>setView('kana')} style={{cursor:'pointer'}}><div className="n">あ ア</div><h3>Kana</h3><p>Complete hiragana &amp; katakana charts with romaji and audio.</p></div>}
-          <div className="ocard" onClick={()=>setView('kanji')} style={{cursor:'pointer'}}><div className="n">漢字</div><h3>Kanji</h3><p>{L.label} kanji with on/kun readings, meanings, and a spoken example.</p></div>
-          <div className="ocard" onClick={()=>setView('vocab')} style={{cursor:'pointer'}}><div className="n">言葉</div><h3>Vocabulary</h3><p>Essential {L.label} words by theme — tap to hear each one.</p></div>
-          <div className="ocard" onClick={()=>setView('grammar')} style={{cursor:'pointer'}}><div className="n">文法</div><h3>Grammar</h3><p>Every core {L.label} pattern with a spoken example sentence.</p></div>
-          {L.hasNumbers && <div className="ocard" onClick={()=>setView('numbers')} style={{cursor:'pointer'}}><div className="n">数字</div><h3>Numbers</h3><p>Telling time, counters, money, and tricky number readings.</p></div>}
-          <div className="ocard" onClick={()=>setView('practice')} style={{cursor:'pointer'}}><div className="n">練習</div><h3>Flashcards</h3><p>Flip-card drills. Shuffle, listen, and mark what you know.</p></div>
-          <div className="ocard" onClick={()=>setView('practice')} style={{cursor:'pointer'}}><div className="n">試験</div><h3>Quizzes</h3><p>Multiple-choice quizzes that score you and save your best.</p></div>
-          <div className="ocard" onClick={()=>setView('practice','mock')} style={{cursor:'pointer'}}><div className="n">模擬</div><h3>Mock Test</h3><p>A timed, scored mix of all sections — see if you're ready.</p></div>
+      {weakRows.length > 0 && (
+        <div style={{ marginTop: 8, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--muted)', marginBottom: 8 }}>Weak areas</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 20px' }}>
+            {weakRows.map(([name, pct]) => {
+              const mode = modeMap[name] || '';
+              return (
+                <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontWeight: 500 }}>{name}</span>
+                  <span style={{ color: 'var(--muted)', fontSize: '12px' }}>{pct}%</span>
+                  <div className="pbar" style={{ width: 60, height: 4 }}>
+                    <i style={{ width: Math.max(pct, 2) + '%', background: pct < 60 ? 'var(--bad)' : 'var(--good)' }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            className="btn sm primary"
+            style={{ marginTop: 12 }}
+            onClick={() => {
+              const weak = weakRows[0];
+              const mode = modeMap[weak[0]] || 'vocab';
+              setView('practice', 'quiz', mode);
+            }}
+          >
+            Practice weakest →
+          </button>
         </div>
-      </section>
-
-      <NextLevel pct={pct} setLevel={setLevel}/>
+      )}
     </div>
   );
-})
+}
+
+const Home = React.memo(function Home({ setView, name, prog, setGoal, toggleDaily, setExamDate, setLevel, levelDue, user, onSignIn }) {
+  const L = LEVEL_META;
+  const dueN = dueCount(prog.srs);
+
+  return (
+    <div>
+      {/* Guest banner – only shown when not signed in */}
+      {!user && (
+        <section className="wrap" style={{ paddingTop: '18px' }}>
+          <GuestSyncBanner onSignIn={onSignIn} />
+        </section>
+      )}
+
+      {/* Compact Hero */}
+      {!user &&<section className="hero wrap" style={{ paddingBottom: 'clamp(20px, 4vw, 40px)' }}>
+        <span className="kicker">● {L.tag}</span>
+        <h1 style={{ fontSize: 'clamp(32px, 6vw, 52px)' }}>
+          {L.id === 'n5' ? (
+            <>Learn Japanese<br />from <span className="jp">ゼロ</span> to N5</>
+          ) : (
+            <>Level up to<br />JLPT <span className="jp">{L.label}</span></>
+          )}
+        </h1>
+        <p style={{ fontSize: 'clamp(14px, 1.8vw, 18px)', maxWidth: 480, marginTop: 12 }}>
+          A calm, focused place to master {L.label} – read, listen, recall, and stay on track.
+        </p>
+        <div className="cta" style={{ marginTop: 20 }}>
+          <button className="btn primary" onClick={() => setView('practice')}>
+            {dueN > 0 ? `Review ${dueN} due →` : 'Start practicing →'}
+          </button>
+          <button className="btn ghost" onClick={() => setView(L.hasKana ? 'kana' : 'kanji')}>
+            Browse {L.hasKana ? 'kana' : 'kanji'}
+          </button>
+        </div>
+      </section>}
+
+      {/* Today's plan – the core */}
+      <section className="block wrap" style={{ paddingTop: 0, paddingBottom: 0 }}>
+        <TodayPanel
+          prog={prog}
+          name={name}
+          setView={setView}
+          toggleDaily={toggleDaily}
+          setExamDate={setExamDate}
+        />
+      </section>
+
+      {/* Other levels (if any reviews due) */}
+      {OtherLevels && (
+        <section className="block wrap" style={{ paddingTop: 'clamp(12px, 2vw, 24px)', paddingBottom: 0 }}>
+          <OtherLevels levelDue={levelDue} level={L.id} setLevel={setLevel} />
+        </section>
+      )}
+
+      {/* Streak & Goal */}
+      <section className="block wrap" style={{ paddingTop: 'clamp(12px, 2vw, 24px)', paddingBottom: 0 }}>
+        <StreakCard prog={prog} setGoal={setGoal} />
+      </section>
+
+      {/* Progress + Weak areas */}
+      <section className="block wrap" style={{ paddingTop: 'clamp(12px, 2vw, 24px)', paddingBottom: 0 }}>
+        <ProgressCard prog={prog} setView={setView} />
+      </section>
+
+      {/* Quick actions */}
+      <section className="block wrap" style={{ paddingTop: 'clamp(12px, 2vw, 24px)', paddingBottom: 0 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+          <button className="btn sm" onClick={() => setView('practice', 'review')}>🧠 Review</button>
+          <button className="btn sm" onClick={() => setView('practice', 'quiz')}>✦ Quiz</button>
+          <button className="btn sm" onClick={() => setView('practice', 'reading')}>📖 Reading</button>
+          <button className="btn sm" onClick={() => setView('practice', 'mock')}>📝 Mock</button>
+          <button className="btn sm" onClick={() => setView('practice', 'mistakes')}>⚠ Mistakes</button>
+        </div>
+      </section>
+
+      {/* Next level suggestion */}
+      <section className="block wrap" style={{ paddingTop: 'clamp(12px, 2vw, 24px)' }}>
+        <NextLevel
+          pct={Math.round(
+            Object.keys(prog.known || {}).reduce((a, k) => a + Object.keys(prog.known[k] || {}).length, 0) / TOTAL_CARDS * 100
+          )}
+          setLevel={setLevel}
+        />
+      </section>
+    </div>
+  );
+});
 
 /* ---------- kana ---------- */
 const KanaGrid = React.memo(function KanaGrid({list}){
@@ -2297,7 +2542,7 @@ function makeQuestions(mode, cat){
   const allA=pool.map(x=>x.a);  
   return shuffle(pool).slice(0,10).map(function(it){ return {kind:kind, prompt:it.p, sub:it.sub, say:it.say, correct:it.a, options:buildOptions(it.a, allA)}; });
 }
-function Quiz({ cp, mode, setMode, cat, setCat }) {
+function Quiz({ cp, mode, setMode, cat, setCat, setDaily }) {
   const [seed, setSeed] = useState(0);
   const [i, setI] = useState(0);
   const [picked, setPicked] = useState(null);
@@ -2313,6 +2558,13 @@ function Quiz({ cp, mode, setMode, cat, setCat }) {
     if (mode === 'listen' && !done && questions[i]) speak(questions[i].say);
   }, [mode, seed, i, done, questions]);
 
+  // ---- Auto‑complete daily quiz task ----
+  useEffect(() => {
+    if (done) {
+      setDaily('quiz', true);
+    }
+  }, [done, setDaily]);
+
   const restart = () => {
     setSeed(s => s + 1);
     setI(0);
@@ -2320,16 +2572,6 @@ function Quiz({ cp, mode, setMode, cat, setCat }) {
     setScore(0);
     setDone(false);
   };
-
-  // const changeMode = (m) => {
-  //   setMode(m);
-  //   setCat('All');
-  //   setSeed(s => s + 1);
-  //   setI(0);
-  //   setPicked(null);
-  //   setScore(0);
-  //   setDone(false);
-  // };
 
   const choose = (opt) => {
     if (picked !== null) return;
@@ -2360,8 +2602,6 @@ function Quiz({ cp, mode, setMode, cat, setCat }) {
 
   return (
     <div className="quiz-wrap">
-      {/* No chips – modes and categories are now in parent */}
-
       {!done ? (
         <div className="qcard">
           <div className="pbar" style={{ marginBottom: 24 }}><i style={{ width: (i / N * 100) + '%' }} /></div>
@@ -2398,7 +2638,6 @@ function Quiz({ cp, mode, setMode, cat, setCat }) {
     </div>
   );
 }
-
 /* ---------- spaced repetition review ---------- */
 function CaughtUp({srsDeck, reviewed}){
   const now=Date.now(); let next=Infinity;
@@ -2589,7 +2828,7 @@ function splitSentences(text){
   return out;
 }
 /* ---------- reading (new interactive version – top: page number + controls, bottom: Prev/Next + counter) ---------- */
-function Reading({ cp }) {
+function Reading({ cp, setDaily }) {
   const passages = READING;
 
   const PARTICLE_WORDS = new Set([
@@ -2607,7 +2846,7 @@ function Reading({ cp }) {
   const tokenRefs = useRef({});
   const tooltipRef = useRef(null);
   const hoverTimeoutRef = useRef(null);
-  const containerRef = useRef(null); // ← new ref for scrolling
+  const containerRef = useRef(null);
 
   const [selectedOptions, setSelectedOptions] = useState([]);
   const [answered, setAnswered] = useState(false);
@@ -2646,8 +2885,7 @@ function Reading({ cp }) {
 
     if (passageChanged) {
       setCurrentQuestionIdx(0);
-      // ---- Scroll to top when passage changes ----
-      containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // ❌ Auto‑scroll removed – only happens on "Next passage" button click
     }
 
     setTooltipVisible(false);
@@ -2764,7 +3002,7 @@ function Reading({ cp }) {
     return () => document.removeEventListener('mousedown', handler);
   }, [tooltipVisible, activeTokenKey]);
 
-  // ---- Option selection (no auto‑jump) ----
+  // ---- Option selection ----
   const selectOption = (questionIdx, optionIdx) => {
     if (answered || isPassageCompleted) return;
     if (selectedOptions[questionIdx] !== null && selectedOptions[questionIdx] !== undefined) return;
@@ -2793,6 +3031,9 @@ function Reading({ cp }) {
         ...prev,
         reading,
       }));
+
+      // ---- Auto‑complete daily reading task ----
+      setDaily('read', true);
     }
   };
 
@@ -2816,7 +3057,7 @@ function Reading({ cp }) {
     setCurrentPassageIdx(idx);
     setTooltipVisible(false);
     setActiveTokenKey(null);
-    // Scroll will happen automatically via the useEffect above
+    // No scroll here – only on "Next passage" button click
   };
 
   const renderTokens = (tokens, baseKey) => {
@@ -2994,7 +3235,7 @@ function Reading({ cp }) {
         </div>
       )}
 
-      {/* Next passage button */}
+      {/* Next passage button – SCROLLS TO TOP */}
       {answered && isPassageCompleted && (
         <div style={{ marginTop: 16, textAlign: 'center' }}>
           <button
@@ -3011,6 +3252,8 @@ function Reading({ cp }) {
               }
               if (nextUncompleted !== -1) {
                 goToPassage(nextUncompleted);
+                // ✅ Scroll to top of reading section
+                containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               } else {
                 alert('🎉 You’ve completed all passages!');
               }
@@ -3056,7 +3299,6 @@ function Reading({ cp }) {
     </div>
   );
 }
-
 /* ---------- mock test ---------- */
 const MOCK_TIME = 12*60; // seconds (fallback if a level has no mock config)
 function buildMock(){
@@ -3105,7 +3347,7 @@ function MockHistory({hist}){
     </div>
   );
 }
-function Mock({cp}){
+function Mock({ cp, setDaily }) {
   const MOCK_SECS = (LEVEL_META.mock && LEVEL_META.mock.secs) || MOCK_TIME;
   const MOCK_COUNT = (LEVEL_META.mock && LEVEL_META.mock.mix) ? Object.keys(LEVEL_META.mock.mix).reduce(function(a,k){return a+LEVEL_META.mock.mix[k];},0) : 20;
   const [started,setStarted]=useState(false);
@@ -3118,6 +3360,14 @@ function Mock({cp}){
   const [review,setReview]=useState(false);
   const best=(cp.prog.best||{}).mock||0;
   const examRef=useRef([]), ansRef=useRef({}), doneRef=useRef(false);
+
+  // ---- Auto‑complete daily mock task ----
+  useEffect(() => {
+    if (finished && result) {
+      setDaily('mock', true);
+    }
+  }, [finished, result, setDaily]);
+
   useEffect(()=>{ examRef.current=exam; },[exam]);
   useEffect(()=>{ ansRef.current=answers; },[answers]);
 
@@ -3228,7 +3478,6 @@ function Mock({cp}){
     </div>
   );
 }
-
 /* ---------- mistake review ---------- */
 function MistakeReview({cp}){
   const all = cp.prog.mistakes || [];
@@ -3320,15 +3569,15 @@ const Practice = React.memo(function Practice({ cp, tool, sub, navigate }) {
   // Handlers
   const handlePrimarySelect = (newTool) => {
     setIsPrimaryDropdownOpen(false);
-    navigate('practice', newTool, ''); // clear sub
+    navigate('practice', newTool, '');
   };
 
   const handleSecondarySelect = (id) => {
     setIsSecondaryDropdownOpen(false);
-    navigate('practice', tool, id); // keep tool, update sub
+    navigate('practice', tool, id);
   };
 
-  // Click‑outside refs and effect (unchanged)
+  // Click‑outside refs
   const primaryWrapperRef = useRef(null);
   const secondaryWrapperRef = useRef(null);
   useEffect(() => {
@@ -3428,13 +3677,14 @@ const Practice = React.memo(function Practice({ cp, tool, sub, navigate }) {
             mode={quizMode}
             cat={quizCat}
             setCat={setQuizCat}
+            setDaily={cp.setDaily}
           />
         ) : tool === 'cards' ? (
           <Flashcards cp={cp} deckId={deckId} />
         ) : tool === 'reading' ? (
-          <Reading cp={cp} />
+          <Reading cp={cp} setDaily={cp.setDaily} />
         ) : tool === 'mock' ? (
-          <Mock cp={cp} />
+          <Mock cp={cp} setDaily={cp.setDaily} />
         ) : tool === 'mistakes' ? (
           <MistakeReview cp={cp} />
         ) : (
