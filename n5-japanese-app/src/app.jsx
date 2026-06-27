@@ -610,7 +610,9 @@ const levelDue = useMemo(() => {
   } catch (e) {}
   return result;
 }, [doc]);
-
+const updateProgress = useCallback((updater) => {
+  commit(updater);
+}, [commit]);
   // ---- Return ----
   return {
     prog,
@@ -630,6 +632,7 @@ const levelDue = useMemo(() => {
     clearMistake,
     recordBatch,
     connectionStatus,
+    updateProgress,
   };
 }
 /* ---------- voice (Web Speech API) ---------- */
@@ -2583,202 +2586,201 @@ function splitSentences(text){
   return out;
 }
 /* ---------- reading (new interactive version – top: page number + controls, bottom: Prev/Next + counter) ---------- */
-  function Reading({ cp }) {
-  // ---- enrich passages ----
-  const enrichedPassages = useMemo(() => {
-    return (READING || []).map(p => {
-      const vocabItems = (p.vocab || []).map(id =>
-        VOCAB.find(v => v.id === id)
-      ).filter(Boolean);
-      const kanjiItems = (p.kanji || []).map(id =>
-        KANJI.find(k => k.id === id)
-      ).filter(Boolean);
-      const grammarItems = (p.grammar || []).map(id =>
-        GRAMMAR.find(g => g.id === id)
-      ).filter(Boolean);
-      return { ...p, vocabItems, kanjiItems, grammarItems };
-    });
-  }, []);
+function Reading({ cp }) {
+  const passages = READING; // imported from levels/registry
 
-  // ---- selection ----
-  const [selectedId, setSelectedId] = useState(() => {
-    if (enrichedPassages.length) return enrichedPassages[0].id;
-    return null;
-  });
+  const [currentPassageIdx, setCurrentPassageIdx] = useState(0);
+  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [showEnglish, setShowEnglish] = useState(false);
 
-  const currentPassage = useMemo(() => {
-    return enrichedPassages.find(p => p.id === selectedId) || null;
-  }, [selectedId, enrichedPassages]);
+  const [activeTokenKey, setActiveTokenKey] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const tokenRefs = useRef({});
+  const tooltipRef = useRef(null);
 
-  const currentIndex = enrichedPassages.findIndex(p => p.id === selectedId);
-  const total = enrichedPassages.length;
+  const [selectedOptions, setSelectedOptions] = useState([]);
+  const [answered, setAnswered] = useState(false);
 
-  // ---- tokenisation ----
-  const tokens = useMemo(() => {
-    if (!currentPassage) return [];
-    const text = currentPassage.jp;
-    const vocabItems = currentPassage.vocabItems || [];
-    const wordMap = {};
-    vocabItems.forEach(v => {
-      const key = v.jp;
-      if (!wordMap[key]) wordMap[key] = v;
-    });
-    const sortedWords = Object.keys(wordMap).sort((a, b) => b.length - a.length);
-    const result = [];
+  const currentPassage = passages[currentPassageIdx];
+  const totalPassages = passages.length;
+  const questions = currentPassage?.questions || [];
+  const currentQuestion = questions[currentQuestionIdx] || null;
+  const totalQuestions = questions.length;
+
+  const readingProgress = cp.prog.reading || {};
+  const passageProgress = readingProgress[currentPassage?.id] || null;
+  const isPassageCompleted = passageProgress?.completed || false;
+
+  useEffect(() => {
+    if (currentPassage && passageProgress) {
+      setSelectedOptions(passageProgress.answers || []);
+      setAnswered(passageProgress.completed || false);
+    } else {
+      setSelectedOptions(new Array(totalQuestions).fill(null));
+      setAnswered(false);
+    }
+    setCurrentQuestionIdx(0);
+    setActiveTokenKey(null);
+  }, [currentPassageIdx, currentPassage, passageProgress, totalQuestions]);
+
+  const tokenize = (text, dict) => {
+    if (!text || !dict) return [{ type: 'plain', text }];
+    const sortedWords = Object.keys(dict).sort((a, b) => b.length - a.length);
+    const tokens = [];
     let i = 0;
     while (i < text.length) {
       let matched = false;
       for (const word of sortedWords) {
         if (text.startsWith(word, i)) {
-          result.push({
-            type: 'vocab',
-            text: word,
-            vocab: wordMap[word],
-            start: i,
-            end: i + word.length
-          });
+          tokens.push({ type: 'dict', text: word, entry: dict[word] });
           i += word.length;
           matched = true;
           break;
         }
       }
       if (!matched) {
-        result.push({
-          type: 'char',
-          text: text[i],
-          start: i,
-          end: i + 1
-        });
+        tokens.push({ type: 'plain', text: text[i] });
         i++;
       }
     }
-    return result;
-  }, [currentPassage]);
-
-  // ---- tooltip ----
-  const [activeTokenIdx, setActiveTokenIdx] = useState(null);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
-  const tokenRefs = useRef({});
-
-  // ---- toggles ----
-  const [showRomaji, setShowRomaji] = useState(false);
-  const [showEnglish, setShowEnglish] = useState(false);
-  const [showReference, setShowReference] = useState(false);
-
-  // ---- audio ----
-  const [activeSentence, setActiveSentence] = useState(-1);
-  const runRef = useRef(0);
-  const stopAudio = useCallback(() => {
-    runRef.current++;
-    try { window.speechSynthesis.cancel(); } catch(e) {}
-  }, []);
-
-  const playFull = useCallback(() => {
-    if (!currentPassage) return;
-    stopAudio();
-    const myRun = ++runRef.current;
-    speak(currentPassage.jp, {
-      end: () => { if (runRef.current === myRun) setActiveSentence(-1); }
-    });
-  }, [currentPassage, stopAudio]);
-
-  const playSentences = useCallback(() => {
-    if (!currentPassage) return;
-    stopAudio();
-    const myRun = ++runRef.current;
-    const segs = splitSentences(currentPassage.jp);
-    const step = (i) => {
-      if (runRef.current !== myRun) return;
-      if (i >= segs.length) { setActiveSentence(-1); return; }
-      const txt = segs[i].t.replace(/\n/g, ' ').trim();
-      if (!txt) { step(i+1); return; }
-      setActiveSentence(i);
-      speak(txt, {
-        end: () => {
-          if (runRef.current === myRun) {
-            setTimeout(() => step(i+1), 120);
-          }
-        }
-      });
-    };
-    step(0);
-  }, [currentPassage, stopAudio]);
-
-  useEffect(() => {
-    return () => {
-      try { window.speechSynthesis.cancel(); } catch(e) {}
-    };
-  }, []);
-
-  // ---- token click ----
-  const handleTokenClick = (idx, event) => {
-    const token = tokens[idx];
-    if (token.type !== 'vocab') return;
-    if (activeTokenIdx === idx) {
-      setActiveTokenIdx(null);
-      return;
-    }
-    const rect = event.currentTarget.getBoundingClientRect();
-    setTooltipPos({
-      x: rect.left + rect.width / 2,
-      y: rect.top - 10
-    });
-    setActiveTokenIdx(idx);
+    return tokens;
   };
 
-  // ---- auto-play vocab audio on tooltip open ----
-  useEffect(() => {
-    if (activeTokenIdx !== null && tokens[activeTokenIdx] && tokens[activeTokenIdx].type === 'vocab') {
-      const vocab = tokens[activeTokenIdx].vocab;
-      if (vocab && vocab.kana) {
-        speak(vocab.kana);
-      }
-    }
-  }, [activeTokenIdx, tokens]);
+  const passageTokens = useMemo(() => {
+    if (!currentPassage) return [];
+    return tokenize(currentPassage.jp, currentPassage.dictionary);
+  }, [currentPassage]);
 
-  // ---- close tooltip ----
+  const questionTokens = useMemo(() => {
+    if (!currentQuestion) return { question: [], options: [] };
+    const qTokens = tokenize(currentQuestion.question, currentQuestion.dictionary);
+    const optTokens = currentQuestion.options.map(opt => tokenize(opt, currentQuestion.dictionary));
+    return { question: qTokens, options: optTokens };
+  }, [currentQuestion]);
+
+  const speakPassage = useCallback(() => {
+    if (!currentPassage) return;
+    speak(currentPassage.jp);
+  }, [currentPassage]);
+
+  const speakQuestion = useCallback((questionText) => {
+    if (!questionText) return;
+    speak(questionText);
+  }, []);
+
+  const handleTokenClick = (token, key, event) => {
+    event.stopPropagation(); // Prevent parent option selection
+    if (token.type !== 'dict') return;
+
+    const textToSpeak = token.entry.kana || token.text;
+    speak(textToSpeak);
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    let x = rect.left + rect.width / 2;
+    let y = rect.top - 10;
+    const tooltipWidth = 200;
+
+    if (y < 80) y = rect.bottom + 10;
+    if (x + tooltipWidth / 2 > window.innerWidth - 20) x = window.innerWidth - 20 - tooltipWidth / 2;
+    if (x - tooltipWidth / 2 < 20) x = 20 + tooltipWidth / 2;
+
+    setTooltipPos({ x, y });
+    setActiveTokenKey(key);
+  };
+
   useEffect(() => {
     const handler = (e) => {
-      if (activeTokenIdx !== null) {
-        const tooltipEl = document.getElementById('vocab-tooltip');
-        if (tooltipEl && tooltipEl.contains(e.target)) return;
-        const tokenEl = tokenRefs.current[activeTokenIdx];
-        if (tokenEl && tokenEl.contains(e.target)) return;
-        setActiveTokenIdx(null);
-      }
+      if (!activeTokenKey) return;
+      const tooltipEl = document.getElementById('reading-tooltip');
+      if (tooltipEl && tooltipEl.contains(e.target)) return;
+      const tokenEl = tokenRefs.current[activeTokenKey];
+      if (tokenEl && tokenEl.contains(e.target)) return;
+      setActiveTokenKey(null);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [activeTokenIdx]);
+  }, [activeTokenKey]);
 
-  // ---- sentence ranges ----
-  const sentenceTokenRanges = useMemo(() => {
-    if (!currentPassage || tokens.length === 0) return [];
-    const segs = splitSentences(currentPassage.jp);
-    const ranges = [];
-    let tokenIdx = 0;
-    segs.forEach(seg => {
-      const start = seg.start;
-      const end = seg.start + seg.t.length;
-      const startIdx = tokens.findIndex(t => t.start >= start);
-      const endIdx = tokens.findIndex(t => t.end > end);
-      if (startIdx !== -1) {
-        const endIdxFinal = endIdx !== -1 ? endIdx : tokens.length;
-        ranges.push({ start: startIdx, end: endIdxFinal });
-      } else {
-        ranges.push({ start: -1, end: -1 });
-      }
+  const selectOption = (questionIdx, optionIdx) => {
+    if (answered || isPassageCompleted) return;
+    if (selectedOptions[questionIdx] !== null && selectedOptions[questionIdx] !== undefined) return;
+
+    const newSelected = [...selectedOptions];
+    newSelected[questionIdx] = optionIdx;
+    setSelectedOptions(newSelected);
+
+    const allAnswered = newSelected.every(idx => idx !== null && idx !== undefined);
+    if (allAnswered) {
+      setAnswered(true);
+      const score = newSelected.reduce((acc, sel, idx) => {
+        return acc + (sel === questions[idx]?.answer ? 1 : 0);
+      }, 0);
+      const total = questions.length;
+      const progressEntry = {
+        score,
+        total,
+        answers: newSelected,
+        completed: true,
+        timestamp: Date.now(),
+      };
+      const reading = { ...(cp.prog.reading || {}) };
+      reading[currentPassage.id] = progressEntry;
+      cp.updateProgress(prev => ({
+        ...prev,
+        reading,
+      }));
+    }
+  };
+
+  const nextQuestion = () => {
+    if (currentQuestionIdx < totalQuestions - 1) {
+      setCurrentQuestionIdx(prev => prev + 1);
+      setActiveTokenKey(null);
+    }
+  };
+  const prevQuestion = () => {
+    if (currentQuestionIdx > 0) {
+      setCurrentQuestionIdx(prev => prev - 1);
+      setActiveTokenKey(null);
+    }
+  };
+
+  const goToPassage = (idx) => {
+    setCurrentPassageIdx(idx);
+    setActiveTokenKey(null);
+  };
+
+  const renderTokens = (tokens, baseKey) => {
+    return tokens.map((token, idx) => {
+      const key = `${baseKey}-${idx}`;
+      const isActive = activeTokenKey === key;
+      const isDict = token.type === 'dict';
+      return (
+        <span
+          key={key}
+          ref={el => { if (isDict) tokenRefs.current[key] = el; }}
+          onClick={(e) => isDict && handleTokenClick(token, key, e)}
+          style={{
+            cursor: isDict ? 'pointer' : 'default',
+            background: isActive ? 'var(--accent-dim)' : 'transparent',
+            borderRadius: '4px',
+            padding: isActive ? '2px 0' : '0',
+            transition: 'background 0.15s ease',
+          }}
+        >
+          {token.text}
+        </span>
+      );
     });
-    return ranges;
-  }, [currentPassage, tokens]);
+  };
 
-  if (!enrichedPassages.length) {
+  if (!currentPassage) {
     return (
-      <div className="quiz-wrap" style={{maxWidth:'560px'}}>
-        <div className="qcard" style={{textAlign:'center'}}>
-          <div style={{fontSize:'44px',lineHeight:1}}>📖</div>
-          <h3 style={{fontSize:'21px',margin:'10px 0 4px'}}>No reading passages</h3>
-          <p className="muted" style={{fontSize:'14px',maxWidth:'420px',margin:'0 auto'}}>
+      <div className="quiz-wrap" style={{ maxWidth: '560px' }}>
+        <div className="qcard" style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '44px', lineHeight: 1 }}>📖</div>
+          <h3 style={{ fontSize: '21px', margin: '10px 0 4px' }}>No reading passages</h3>
+          <p className="muted" style={{ fontSize: '14px', maxWidth: '420px', margin: '0 auto' }}>
             This level doesn't have reading materials yet.
           </p>
         </div>
@@ -2786,175 +2788,221 @@ function splitSentences(text){
     );
   }
 
+  const allTokens = useMemo(() => {
+    const q = questionTokens;
+    return [
+      ...passageTokens.map((t, i) => ({ ...t, key: `p-${i}` })),
+      ...q.question.map((t, i) => ({ ...t, key: `q-${i}` })),
+      ...q.options.flatMap((opt, oi) => opt.map((t, i) => ({ ...t, key: `o-${oi}-${i}` }))),
+    ];
+  }, [passageTokens, questionTokens]);
+
+  const activeToken = activeTokenKey
+    ? allTokens.find(t => t.key === activeTokenKey)
+    : null;
+
+  const isQuestionAnswered = selectedOptions[currentQuestionIdx] !== null && selectedOptions[currentQuestionIdx] !== undefined;
+  const selectedIdx = selectedOptions[currentQuestionIdx];
+  const correctIdx = currentQuestion?.answer;
+
   return (
-    <div className="reading-wrap" style={{maxWidth:'780px', margin:'0 auto'}}>
-      {currentPassage && (
-        <>
-          {/* Top bar: page number (left) + controls (right) */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span className="muted" style={{ fontSize: '15px', fontWeight: 600 }}>
-              {/* {currentIndex + 1} */} {/* hidden as requested */}
-            </span>
-            <span className="r-tools">
-              {speechSupported && (
-                <>
-                  <button className="spk reading-speaker" onClick={playFull} aria-label="Play full passage">🔊</button>
-                  <button className="spk reading-speaker" onClick={playSentences} aria-label="Play sentence by sentence">⏯</button>
-                </>
-              )}
-              <div className="rtoggle-group">
-                <button className={cx('rtoggle', showRomaji && 'on')} onClick={() => setShowRomaji(s => !s)}>
-                  Romaji <span className="rtoggle-underline"/>
-                </button>
-                <button className={cx('rtoggle', showEnglish && 'on')} onClick={() => setShowEnglish(s => !s)}>
-                  English <span className="rtoggle-underline"/>
-                </button>
-                <button className={cx('rtoggle', showReference && 'on')} onClick={() => setShowReference(s => !s)}>
-                  Reference <span className="rtoggle-underline"/>
+    <div className="reading-wrap" style={{ maxWidth: '780px', margin: '0 auto' }}>
+      {/* Top bar: passage selector (left), controls (right) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            overflowX: 'auto',
+            flex: 1,
+            padding: '4px 0',
+            scrollbarWidth: 'thin',
+          }}
+        >
+          {Array.from({ length: totalPassages }, (_, i) => {
+            const p = passages[i];
+            const isCompleted = (cp.prog.reading || {})[p.id]?.completed || false;
+            return (
+              <button
+                key={i}
+                className={cx('chip', i === currentPassageIdx && 'on')}
+                onClick={() => goToPassage(i)}
+                style={{
+                  flex: '0 0 auto',
+                  minWidth: '32px',
+                  padding: '4px 8px',
+                  fontSize: '13px',
+                  fontWeight: i === currentPassageIdx ? '700' : '500',
+                  border: i === currentPassageIdx ? '2px solid var(--accent)' : '1px solid var(--line)',
+                  background: i === currentPassageIdx ? 'var(--accent-dim)' : 'transparent',
+                  color: i === currentPassageIdx ? 'var(--fg)' : 'var(--muted)',
+                  position: 'relative',
+                }}
+              >
+                {i + 1}
+                {isCompleted && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      fontSize: '10px',
+                      color: 'var(--good)',
+                    }}
+                  >
+                    ✓
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <button className="spk reading-speaker" onClick={speakPassage} aria-label="Read passage">
+            🔊
+          </button>
+          <button
+            className={cx('rtoggle', showEnglish && 'on')}
+            onClick={() => setShowEnglish(s => !s)}
+          >
+            English <span className="rtoggle-underline" />
+          </button>
+        </div>
+      </div>
+
+      {/* Passage text */}
+      <div className="reading-card">
+        <p className="rjp" style={{ whiteSpace: 'pre-wrap', lineHeight: 2.2 }}>
+          {renderTokens(passageTokens, 'p')}
+        </p>
+        {showEnglish && (
+          <div className="ren" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+            {currentPassage.en}
+          </div>
+        )}
+      </div>
+
+      {/* Question section */}
+      {totalQuestions > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div className="shead" style={{ marginBottom: 12 }}>
+            <div>
+              <div className="ey">Comprehension</div>
+              <h2 style={{ fontSize: 'clamp(20px, 3vw, 28px)' }}>
+                Question {currentQuestionIdx + 1} / {totalQuestions}
+                {isPassageCompleted && (
+                  <span style={{ fontSize: '14px', color: 'var(--good)', marginLeft: 12 }}>✓ Completed</span>
+                )}
+              </h2>
+            </div>
+          </div>
+          <div className="qcard">
+            <div className="q-prompt" style={{ textAlign: 'left' }}>
+              <div className="med" style={{ fontSize: 'clamp(16px, 2.5vw, 22px)', fontWeight: 500 }}>
+                {renderTokens(questionTokens.question, 'q')}
+                <button
+                  className="spk"
+                  style={{ marginLeft: 10, display: 'inline-flex' }}
+                  onClick={() => speakQuestion(currentQuestion?.question || '')}
+                  aria-label="Read question"
+                >
+                  🔊
                 </button>
               </div>
-            </span>
-          </div>
-
-          {/* Passage text */}
-          <div className="reading-card">
-            <p className="rjp" style={{whiteSpace:'pre-wrap', lineHeight:2.2}}>
-              {tokens.map((token, idx) => {
-                const isVocab = token.type === 'vocab';
-                const isActive = activeSentence !== -1 && idx >= sentenceTokenRanges[activeSentence]?.start && idx <= sentenceTokenRanges[activeSentence]?.end;
+            </div>
+            <div className="opts" style={{ marginTop: 12 }}>
+              {questionTokens.options.map((optTokens, optIdx) => {
+                const isSelected = selectedIdx === optIdx;
+                const isCorrect = correctIdx === optIdx;
+                let className = 'opt';
+                if (isQuestionAnswered) {
+                  if (isCorrect) className += ' correct';
+                  if (isSelected && !isCorrect) className += ' wrong';
+                }
                 return (
-                  <span
-                    key={idx}
-                    ref={el => tokenRefs.current[idx] = el}
-                    className={cx(
-                      isVocab ? 'vocab-token' : '',
-                      isActive ? 'rseg on' : ''
-                    )}
-                    onClick={(e) => isVocab ? handleTokenClick(idx, e) : null}
-                    style={isVocab ? { cursor: 'pointer', borderBottom: '2px dotted var(--accent)', padding: '2px 0' } : {}}
+                  <div
+                    key={optIdx}
+                    className={className}
+                    style={{
+                      cursor: isQuestionAnswered ? 'default' : 'pointer',
+                      background: isSelected ? 'var(--accent-dim)' : 'var(--bg-1)',
+                      borderColor: isQuestionAnswered && isCorrect ? 'var(--good)' : (isSelected && !isCorrect ? 'var(--bad)' : 'var(--line)'),
+                    }}
+                    onClick={() => !isQuestionAnswered && !isPassageCompleted && selectOption(currentQuestionIdx, optIdx)}
                   >
-                    {token.text}
-                  </span>
+                    <span className="k">{String.fromCharCode(65 + optIdx)}</span>
+                    <span>{renderTokens(optTokens, `o-${optIdx}`)}</span>
+                  </div>
                 );
               })}
-            </p>
-            {showRomaji && (
-              <div className="rro" style={{marginTop:12, paddingTop:12, borderTop:'1px solid var(--line)'}}>
-                {currentPassage.romaji}
-              </div>
-            )}
-            {showEnglish && (
-              <div className="ren" style={{marginTop:12, paddingTop:12, borderTop:'1px solid var(--line)'}}>
-                {currentPassage.en}
-              </div>
-            )}
+            </div>
+            <div className="q-foot" style={{ marginTop: 18 }}>
+              <button className="btn" disabled={currentQuestionIdx === 0} onClick={prevQuestion}>
+                ‹ Prev
+              </button>
+              <span className="score-pill">
+                {currentQuestionIdx + 1} / {totalQuestions}
+              </span>
+              <button
+                className="btn primary"
+                disabled={currentQuestionIdx === totalQuestions - 1 || !isQuestionAnswered}
+                onClick={nextQuestion}
+              >
+                Next ›
+              </button>
+            </div>
           </div>
 
-          {/* Reference panel */}
-          {showReference && (
-            <div className="reading-ref" style={{marginTop:20, padding:16, background:'var(--bg-1)', borderRadius:'var(--r)', border:'1px solid var(--line)'}}>
-              {currentPassage.vocabItems.length > 0 && (
-                <div style={{marginBottom:16}}>
-                  <div style={{fontWeight:700, marginBottom:8, color:'var(--accent-2)'}}>Vocabulary</div>
-                  <div style={{display:'grid', gap:6}}>
-                    {currentPassage.vocabItems.map(v => (
-                      <div key={v.id} style={{display:'flex', alignItems:'center', gap:10, fontSize:'14px'}}>
-                        <span style={{fontFamily:'var(--jp)', fontWeight:500}}>{v.jp}</span>
-                        <span style={{color:'var(--accent-2)', fontSize:'13px'}}>{v.kana}</span>
-                        <span style={{color:'var(--muted)'}}>{v.en}</span>
-                        <SpeakBtn text={v.kana} lg={false} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {currentPassage.kanjiItems.length > 0 && (
-                <div style={{marginBottom:16}}>
-                  <div style={{fontWeight:700, marginBottom:8, color:'var(--accent-2)'}}>Kanji</div>
-                  <div style={{display:'grid', gap:6}}>
-                    {currentPassage.kanjiItems.map(k => (
-                      <div key={k.id} style={{display:'flex', alignItems:'center', gap:10, fontSize:'14px'}}>
-                        <span style={{fontFamily:'var(--jp)', fontSize:'18px'}}>{k.c}</span>
-                        <span style={{color:'var(--muted)'}}>{k.mean}</span>
-                        {k.kun && k.kun !== '—' && <span style={{fontSize:'13px', color:'var(--accent-2)'}}>kun: {displayReading(k.kun)}</span>}
-                        {k.on && k.on !== '—' && <span style={{fontSize:'13px', color:'var(--accent-2)'}}>on: {k.on}</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {currentPassage.grammarItems.length > 0 && (
-                <div>
-                  <div style={{fontWeight:700, marginBottom:8, color:'var(--accent-2)'}}>Grammar</div>
-                  <div style={{display:'grid', gap:6}}>
-                    {currentPassage.grammarItems.map(g => (
-                      <div key={g.id} style={{display:'flex', alignItems:'center', gap:10, fontSize:'14px'}}>
-                        <span style={{fontWeight:600}}>{g.point}</span>
-                        <span style={{color:'var(--muted)'}}>{g.meaning}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+          {answered && isPassageCompleted && (
+            <div style={{ marginTop: 16, textAlign: 'center' }}>
+              <button
+                className="btn primary"
+                onClick={() => {
+                  if (currentPassageIdx < totalPassages - 1) {
+                    goToPassage(currentPassageIdx + 1);
+                  } else {
+                    alert('You’ve completed all passages! 🎉');
+                  }
+                }}
+              >
+                {currentPassageIdx < totalPassages - 1 ? 'Next passage →' : 'All done! 🎉'}
+              </button>
             </div>
           )}
+        </div>
+      )}
 
-          {/* Tooltip */}
-          {activeTokenIdx !== null && tokens[activeTokenIdx] && tokens[activeTokenIdx].type === 'vocab' && (
-            <div
-              id="vocab-tooltip"
-              style={{
-                position:'fixed',
-                left: tooltipPos.x,
-                top: tooltipPos.y,
-                transform: 'translate(-50%, -100%)',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--line-2)',
-                borderRadius: '12px',
-                padding: '12px 16px',
-                boxShadow: 'var(--shadow)',
-                zIndex: 1000,
-                minWidth: '180px',
-                pointerEvents: 'auto'
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                <span style={{fontFamily:'var(--jp)', fontSize:'20px', fontWeight:600}}>
-                  {tokens[activeTokenIdx].vocab.jp}
-                </span>
-                <SpeakBtn text={tokens[activeTokenIdx].vocab.kana} lg={false} />
-              </div>
-              <div style={{color:'var(--accent-2)', fontSize:'14px'}}>
-                {tokens[activeTokenIdx].vocab.kana}
-              </div>
-              <div style={{color:'var(--muted)', fontSize:'14px', marginTop:4}}>
-                {tokens[activeTokenIdx].vocab.en}
-              </div>
-            </div>
-          )}
-
-          {/* Bottom navigation: Prev / Next + counter */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 20 }}>
-            <button 
-              className="btn sm" 
-              onClick={() => { if (currentIndex > 0) { setSelectedId(enrichedPassages[currentIndex-1].id); setActiveTokenIdx(null); setActiveSentence(-1); stopAudio(); } }}
-              disabled={currentIndex === 0}
-            >
-              ‹ Previous
-            </button>
-            <span className="muted" style={{ fontSize: '14px', fontWeight: 500 }}>
-              {currentIndex + 1} / {total}
-            </span>
-            <button 
-              className="btn sm primary" 
-              onClick={() => { if (currentIndex < total - 1) { setSelectedId(enrichedPassages[currentIndex+1].id); setActiveTokenIdx(null); setActiveSentence(-1); stopAudio(); } }}
-              disabled={currentIndex === total - 1}
-            >
-              Next ›
-            </button>
+      {/* Tooltip */}
+      {activeTokenKey && activeToken && activeToken.entry && (
+        <div
+          id="reading-tooltip"
+          ref={tooltipRef}
+          style={{
+            position: 'fixed',
+            left: tooltipPos.x,
+            top: tooltipPos.y,
+            transform: 'translate(-50%, -100%)',
+            background: 'var(--bg-2)',
+            border: '1px solid var(--line-2)',
+            borderRadius: '12px',
+            padding: '8px 14px',
+            boxShadow: 'var(--shadow)',
+            zIndex: 1000,
+            pointerEvents: 'auto',
+            minWidth: '120px',
+            maxWidth: '260px',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ fontFamily: 'var(--jp)', fontSize: '18px', fontWeight: 600 }}>
+            {activeToken.entry.kana || activeToken.text}
           </div>
-        </>
+          <div style={{ color: 'var(--muted)', fontSize: '13px', marginTop: 2 }}>
+            {activeToken.entry.meaning}
+          </div>
+        </div>
       )}
     </div>
   );
