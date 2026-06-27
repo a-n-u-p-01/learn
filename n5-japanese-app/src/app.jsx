@@ -132,7 +132,8 @@ function getCachedPhoto(uid) {
 
 /* ---------- progress (cloud only — Firestore is the single source of truth) ---------- */
 function mergeProg(a,b){
-  a=a||{known:{},best:{},srs:{}}; b=b||{known:{},best:{},srs:{}};
+  a=a||{known:{},best:{},srs:{}, reading:{}};
+  b=b||{known:{},best:{},srs:{}, reading:{}};
   const known=Object.assign({},a.known); const bk=b.known||{};
   for(const d in bk){ known[d]=Object.assign({}, known[d]||{}, bk[d]||{}); }
   const best=Object.assign({},a.best); const bb=b.best||{};
@@ -147,13 +148,13 @@ function mergeProg(a,b){
   const examDate=a.examDate||b.examDate||'';
   const daily=Object.assign({}, a.daily); const bd=b.daily||{};
   for(const d in bd){ daily[d]=Object.assign({}, daily[d]||{}, bd[d]||{}); }
-  // rolling per-section accuracy windows (keep the richer/longer side, capped)
   const secA=a.secStats||{}, secB=b.secStats||{}, secStats={};
   Object.keys(secA).concat(Object.keys(secB)).forEach(function(k){ const aa=secA[k]||[], bb=secB[k]||[]; secStats[k]=(aa.length>=bb.length?aa:bb).slice(-30); });
-  // mistake queue: dedupe by section|prompt|correct, keep most recent 100
   const mk={}; (a.mistakes||[]).concat(b.mistakes||[]).forEach(function(x){ if(x&&x.prompt!=null) mk[(x.section||'')+'|'+x.prompt+'|'+x.correct]=x; });
   const mistakes=Object.keys(mk).map(function(k){return mk[k];}).sort(function(x,y){return (x.t||0)-(y.t||0);}).slice(-100);
-  return {known, best, srs, stats, mockHistory, examDate, daily, secStats, mistakes};
+  // ---- NEW: merge reading ----
+  const reading = Object.assign({}, a.reading||{}, b.reading||{});
+  return {known, best, srs, stats, mockHistory, examDate, daily, secStats, mistakes, reading};
 }
 /* ---------- multi-level document (one Firestore doc per user, progress per level) ---------- */
 function migrateDoc(d){
@@ -273,8 +274,7 @@ function useCloudProgress(user, level) {
   // ---- Commit: updates active level slice ----
   const commit = useCallback((updater) => {
     setDoc(prev => {
-      const cur = (prev.levels && prev.levels[level]) || { known: {}, best: {}, srs: {} };
-      const nextSlice = typeof updater === 'function' ? updater(cur) : updater;
+      const cur = (prev.levels && prev.levels[level]) || { known: {}, best: {}, srs: {}, reading: {} };      const nextSlice = typeof updater === 'function' ? updater(cur) : updater;
       const levels = Object.assign({}, prev.levels);
       levels[level] = nextSlice;
       const next = Object.assign({}, prev, { levels });
@@ -597,8 +597,11 @@ const checkRemote = useCallback(async () => {
   });
 
   // ---- Derived data ----
- const prog = useMemo(() => {
-  return (doc.levels && doc.levels[level]) || { known: {}, best: {}, srs: {} };
+const prog = useMemo(() => {
+  const lvl = (doc.levels && doc.levels[level]) || { known: {}, best: {}, srs: {}, reading: {} };
+  // ensure reading exists even if level exists but reading not set
+  if (!lvl.reading) lvl.reading = {};
+  return lvl;
 }, [doc, level]);
 
 const levelDue = useMemo(() => {
@@ -2587,16 +2590,25 @@ function splitSentences(text){
 }
 /* ---------- reading (new interactive version – top: page number + controls, bottom: Prev/Next + counter) ---------- */
 function Reading({ cp }) {
-  const passages = READING; // imported from levels/registry
+  const passages = READING;
+
+  // Particles to exclude from clickability/hover
+  const PARTICLE_WORDS = new Set([
+    'は', 'が', 'の', 'に', 'を', 'と', 'も', 'で',
+    'から', 'へ', 'まで', 'や', 'か', 'ね', 'よ', 'ぞ', 'ぜ', 'わ'
+  ]);
 
   const [currentPassageIdx, setCurrentPassageIdx] = useState(0);
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [showEnglish, setShowEnglish] = useState(false);
 
+  // Tooltip state
   const [activeTokenKey, setActiveTokenKey] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [tooltipVisible, setTooltipVisible] = useState(false);
   const tokenRefs = useRef({});
   const tooltipRef = useRef(null);
+  const hoverTimeoutRef = useRef(null);
 
   const [selectedOptions, setSelectedOptions] = useState([]);
   const [answered, setAnswered] = useState(false);
@@ -2607,10 +2619,12 @@ function Reading({ cp }) {
   const currentQuestion = questions[currentQuestionIdx] || null;
   const totalQuestions = questions.length;
 
+  // ---- Progress ----
   const readingProgress = cp.prog.reading || {};
   const passageProgress = readingProgress[currentPassage?.id] || null;
   const isPassageCompleted = passageProgress?.completed || false;
 
+  // ---- Load saved progress ----
   useEffect(() => {
     if (currentPassage && passageProgress) {
       setSelectedOptions(passageProgress.answers || []);
@@ -2620,9 +2634,11 @@ function Reading({ cp }) {
       setAnswered(false);
     }
     setCurrentQuestionIdx(0);
+    setTooltipVisible(false);
     setActiveTokenKey(null);
   }, [currentPassageIdx, currentPassage, passageProgress, totalQuestions]);
 
+  // ---- Tokenizer ----
   const tokenize = (text, dict) => {
     if (!text || !dict) return [{ type: 'plain', text }];
     const sortedWords = Object.keys(dict).sort((a, b) => b.length - a.length);
@@ -2632,7 +2648,11 @@ function Reading({ cp }) {
       let matched = false;
       for (const word of sortedWords) {
         if (text.startsWith(word, i)) {
-          tokens.push({ type: 'dict', text: word, entry: dict[word] });
+          if (PARTICLE_WORDS.has(word)) {
+            tokens.push({ type: 'plain', text: word });
+          } else {
+            tokens.push({ type: 'dict', text: word, entry: dict[word] });
+          }
           i += word.length;
           matched = true;
           break;
@@ -2658,6 +2678,7 @@ function Reading({ cp }) {
     return { question: qTokens, options: optTokens };
   }, [currentQuestion]);
 
+  // ---- Speak ----
   const speakPassage = useCallback(() => {
     if (!currentPassage) return;
     speak(currentPassage.jp);
@@ -2668,13 +2689,9 @@ function Reading({ cp }) {
     speak(questionText);
   }, []);
 
-  const handleTokenClick = (token, key, event) => {
-    event.stopPropagation(); // Prevent parent option selection
+  // ---- Show / hide tooltip ----
+  const showTooltip = (token, key, event) => {
     if (token.type !== 'dict') return;
-
-    const textToSpeak = token.entry.kana || token.text;
-    speak(textToSpeak);
-
     const rect = event.currentTarget.getBoundingClientRect();
     let x = rect.left + rect.width / 2;
     let y = rect.top - 10;
@@ -2686,21 +2703,62 @@ function Reading({ cp }) {
 
     setTooltipPos({ x, y });
     setActiveTokenKey(key);
+    setTooltipVisible(true);
+
+    // Cancel any pending hide
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
   };
 
+  const hideTooltipDelayed = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setTooltipVisible(false);
+      setActiveTokenKey(null);
+    }, 200);
+  };
+
+  const cancelHideTooltip = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+  };
+
+  // ---- Token click (also plays audio) ----
+  const handleTokenClick = (token, key, event) => {
+    event.stopPropagation(); // Prevent option selection
+    if (token.type !== 'dict') return;
+
+    const textToSpeak = token.entry.kana || token.text;
+    speak(textToSpeak);
+
+    // If tooltip already visible for this token, close it; else show it
+    if (activeTokenKey === key && tooltipVisible) {
+      setTooltipVisible(false);
+      setActiveTokenKey(null);
+    } else {
+      showTooltip(token, key, event);
+    }
+  };
+
+  // ---- Close tooltip on outside click ----
   useEffect(() => {
     const handler = (e) => {
-      if (!activeTokenKey) return;
+      if (!tooltipVisible) return;
       const tooltipEl = document.getElementById('reading-tooltip');
       if (tooltipEl && tooltipEl.contains(e.target)) return;
       const tokenEl = tokenRefs.current[activeTokenKey];
       if (tokenEl && tokenEl.contains(e.target)) return;
+      setTooltipVisible(false);
       setActiveTokenKey(null);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [activeTokenKey]);
+  }, [tooltipVisible, activeTokenKey]);
 
+  // ---- Option selection ----
   const selectOption = (questionIdx, optionIdx) => {
     if (answered || isPassageCompleted) return;
     if (selectedOptions[questionIdx] !== null && selectedOptions[questionIdx] !== undefined) return;
@@ -2729,37 +2787,63 @@ function Reading({ cp }) {
         ...prev,
         reading,
       }));
+
+      // ---- Auto‑jump to next uncompleted passage ----
+      setTimeout(() => {
+        let nextUncompleted = -1;
+        for (let i = currentPassageIdx + 1; i < totalPassages; i++) {
+          const p = passages[i];
+          const isCompleted = (cp.prog.reading || {})[p.id]?.completed || false;
+          if (!isCompleted) {
+            nextUncompleted = i;
+            break;
+          }
+        }
+        if (nextUncompleted !== -1) {
+          goToPassage(nextUncompleted);
+        } else {
+          alert('🎉 You’ve completed all passages!');
+        }
+      }, 800);
     }
   };
 
+  // ---- Navigation ----
   const nextQuestion = () => {
     if (currentQuestionIdx < totalQuestions - 1) {
       setCurrentQuestionIdx(prev => prev + 1);
+      setTooltipVisible(false);
       setActiveTokenKey(null);
     }
   };
   const prevQuestion = () => {
     if (currentQuestionIdx > 0) {
       setCurrentQuestionIdx(prev => prev - 1);
+      setTooltipVisible(false);
       setActiveTokenKey(null);
     }
   };
 
   const goToPassage = (idx) => {
     setCurrentPassageIdx(idx);
+    setTooltipVisible(false);
     setActiveTokenKey(null);
   };
 
+  // ---- Render tokens ----
   const renderTokens = (tokens, baseKey) => {
     return tokens.map((token, idx) => {
       const key = `${baseKey}-${idx}`;
-      const isActive = activeTokenKey === key;
+      const isActive = activeTokenKey === key && tooltipVisible;
       const isDict = token.type === 'dict';
       return (
         <span
           key={key}
           ref={el => { if (isDict) tokenRefs.current[key] = el; }}
           onClick={(e) => isDict && handleTokenClick(token, key, e)}
+          onMouseEnter={(e) => isDict && showTooltip(token, key, e)}
+          onMouseLeave={hideTooltipDelayed}
+          onMouseMove={cancelHideTooltip}
           style={{
             cursor: isDict ? 'pointer' : 'default',
             background: isActive ? 'var(--accent-dim)' : 'transparent',
@@ -2807,19 +2891,9 @@ function Reading({ cp }) {
 
   return (
     <div className="reading-wrap" style={{ maxWidth: '780px', margin: '0 auto' }}>
-      {/* Top bar: passage selector (left), controls (right) */}
+      {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            overflowX: 'auto',
-            flex: 1,
-            padding: '4px 0',
-            scrollbarWidth: 'thin',
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', flex: 1, padding: '4px 0', scrollbarWidth: 'thin' }}>
           {Array.from({ length: totalPassages }, (_, i) => {
             const p = passages[i];
             const isCompleted = (cp.prog.reading || {})[p.id]?.completed || false;
@@ -2842,17 +2916,7 @@ function Reading({ cp }) {
               >
                 {i + 1}
                 {isCompleted && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      top: '-4px',
-                      right: '-4px',
-                      fontSize: '10px',
-                      color: 'var(--good)',
-                    }}
-                  >
-                    ✓
-                  </span>
+                  <span style={{ position: 'absolute', top: '-4px', right: '-4px', fontSize: '10px', color: 'var(--good)' }}>✓</span>
                 )}
               </button>
             );
@@ -2860,13 +2924,8 @@ function Reading({ cp }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <button className="spk reading-speaker" onClick={speakPassage} aria-label="Read passage">
-            🔊
-          </button>
-          <button
-            className={cx('rtoggle', showEnglish && 'on')}
-            onClick={() => setShowEnglish(s => !s)}
-          >
+          <button className="spk reading-speaker" onClick={speakPassage} aria-label="Read passage">🔊</button>
+          <button className={cx('rtoggle', showEnglish && 'on')} onClick={() => setShowEnglish(s => !s)}>
             English <span className="rtoggle-underline" />
           </button>
         </div>
@@ -2939,43 +2998,16 @@ function Reading({ cp }) {
               })}
             </div>
             <div className="q-foot" style={{ marginTop: 18 }}>
-              <button className="btn" disabled={currentQuestionIdx === 0} onClick={prevQuestion}>
-                ‹ Prev
-              </button>
-              <span className="score-pill">
-                {currentQuestionIdx + 1} / {totalQuestions}
-              </span>
-              <button
-                className="btn primary"
-                disabled={currentQuestionIdx === totalQuestions - 1 || !isQuestionAnswered}
-                onClick={nextQuestion}
-              >
-                Next ›
-              </button>
+              <button className="btn" disabled={currentQuestionIdx === 0} onClick={prevQuestion}>‹ Prev</button>
+              <span className="score-pill">{currentQuestionIdx + 1} / {totalQuestions}</span>
+              <button className="btn primary" disabled={currentQuestionIdx === totalQuestions - 1 || !isQuestionAnswered} onClick={nextQuestion}>Next ›</button>
             </div>
           </div>
-
-          {answered && isPassageCompleted && (
-            <div style={{ marginTop: 16, textAlign: 'center' }}>
-              <button
-                className="btn primary"
-                onClick={() => {
-                  if (currentPassageIdx < totalPassages - 1) {
-                    goToPassage(currentPassageIdx + 1);
-                  } else {
-                    alert('You’ve completed all passages! 🎉');
-                  }
-                }}
-              >
-                {currentPassageIdx < totalPassages - 1 ? 'Next passage →' : 'All done! 🎉'}
-              </button>
-            </div>
-          )}
         </div>
       )}
 
       {/* Tooltip */}
-      {activeTokenKey && activeToken && activeToken.entry && (
+      {tooltipVisible && activeTokenKey && activeToken && activeToken.entry && (
         <div
           id="reading-tooltip"
           ref={tooltipRef}
@@ -2994,6 +3026,8 @@ function Reading({ cp }) {
             minWidth: '120px',
             maxWidth: '260px',
           }}
+          onMouseEnter={cancelHideTooltip}
+          onMouseLeave={hideTooltipDelayed}
           onClick={(e) => e.stopPropagation()}
         >
           <div style={{ fontFamily: 'var(--jp)', fontSize: '18px', fontWeight: 600 }}>
